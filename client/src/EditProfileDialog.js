@@ -216,9 +216,13 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
             anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
             transformOrigin={{ vertical: 'top', horizontal: 'center' }}
           >
-            <MenuItem onClick={handleShowImage}>Show Image</MenuItem>
-            <MenuItem onClick={handleChangeImage}>Change Image</MenuItem>
-            <MenuItem onClick={handleRemoveImage}>Remove Image</MenuItem>
+            {avatar && (
+              <MenuItem onClick={handleShowImage}>Show Image</MenuItem>
+            )}
+            <MenuItem onClick={handleChangeImage}>{avatar ? 'Change Image' : 'Add Image'}</MenuItem>
+            {avatar && (
+              <MenuItem onClick={handleRemoveImage}>Remove Image</MenuItem>
+            )}
           </Menu>
           <input
             type="file"

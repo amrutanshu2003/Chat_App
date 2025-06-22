@@ -22,7 +22,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import UserProfileDialog from './UserProfileDialog';
 import NotificationSettingsDialog from './NotificationSettingsDialog';
 import Snackbar from '@mui/material/Snackbar';
-import MuiAlert from '@mui/material/Alert';
+import MuiAlert, { AlertProps } from '@mui/material/Alert';
 import Divider from '@mui/material/Divider';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
@@ -63,6 +63,11 @@ import ChatIcon from '@mui/icons-material/Chat';
 import PhoneIcon from '@mui/icons-material/Phone';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import EditIcon from '@mui/icons-material/Edit';
+import { startAuthentication } from '@simplewebauthn/browser';
+
+const Alert = React.forwardRef(function Alert(props, ref) {
+  return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
+});
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
 
@@ -139,7 +144,16 @@ function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [token, setToken] = useState(localStorage.getItem('token') || '');
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')) || null);
+  // Safe JSON parse for user
+  function getStoredUser() {
+    try {
+      const stored = localStorage.getItem('user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  }
+  const [user, setUser] = useState(getStoredUser());
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -164,6 +178,7 @@ function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showLogin, setShowLogin] = useState(true);
+  const [snackbar, setSnackbar] = useState(null);
   const [callOpen, setCallOpen] = useState(false);
   const [callIncoming, setCallIncoming] = useState(false);
   const [callAccepted, setCallAccepted] = useState(false);
@@ -241,6 +256,10 @@ function App() {
   const [documentUrl, setDocumentUrl] = useState('');
   const docxContainerRef = useRef(null);
   
+  const handleSnackbarClose = () => {
+    setSnackbar(null);
+  };
+
   // Notification settings state
   const [notificationSettings, setNotificationSettings] = useState(() => {
     try {
@@ -1269,6 +1288,10 @@ function App() {
   const handleRegister = async (e) => {
     if (e) e.preventDefault();
     setError('');
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters long.');
+      return;
+    }
     try {
       const formData = new FormData();
       formData.append('username', username);
@@ -1293,6 +1316,8 @@ function App() {
       setUser(res.data.user);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
+      // Immediately require 2FA setup
+      // await startForce2FASetup(res.data.token); // REMOVE THIS LINE
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
       console.error(err);
@@ -1302,13 +1327,35 @@ function App() {
   const handleLogin = async () => {
     try {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password });
+      // If account is scheduled for deletion, show dialog first
+      if (res.data.deletionScheduled) {
+        setDeletionDialogOpen(true);
+        setDeletionDate(res.data.deletionDate || '');
+        setDeletionEmail(email);
+        setDeletionPassword(password);
+        setDeletionDialogError('');
+        setPendingLoginResponse(res.data); // Store for after cancellation
+        return;
+      }
       setToken(res.data.token);
       setUser(res.data.user);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
       await requestNotificationPermission();
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      const msg = err.response?.data?.message || 'Login failed';
+      const status = err.response?.status;
+      console.log('Login error:', msg, 'Status:', status);
+      if (status === 403 && msg.toLowerCase().includes('deletion')) {
+        setDeletionDialogOpen(true);
+        setDeletionDate(msg.match(/deletion on (.+?)\./)?.[1] || '');
+        setDeletionEmail(email);
+        setDeletionPassword(password);
+        setDeletionDialogError('');
+        setPendingLoginResponse(null); // No login response, must retry after cancel
+      } else {
+        setError(msg);
+      }
     }
   };
 
@@ -1595,29 +1642,80 @@ function App() {
     } catch (e) {
       console.error('Failed to clear localStorage:', e);
     }
+    window.location.reload();
   };
 
-  const handleProfileEdit = async (profile) => {
+  const handleProfileEdit = async (updatedUser, avatarFile) => {
+    const originalUser = { ...user };
+    
+    // Optimistically update UI
+    const localUser = { ...user, username: updatedUser.username, email: updatedUser.email };
+    if (avatarFile) {
+      localUser.avatar = URL.createObjectURL(avatarFile);
+    } else if (updatedUser.avatar === '') {
+      localUser.avatar = '';
+    }
+    setUser(localUser);
+    localStorage.setItem('user', JSON.stringify(localUser)); // Update local storage optimistically
+
     try {
-      const res = await axios.put(`${API_URL}/auth/profile`, { id: user?.id, ...profile }, {
-        headers: { Authorization: `Bearer ${token}` }
+      const formData = new FormData();
+      formData.append('username', updatedUser.username);
+      formData.append('email', updatedUser.email);
+      if (avatarFile) {
+        formData.append('avatar', avatarFile);
+      } else if (updatedUser.avatar === '') {
+        formData.append('avatar', '');
+      }
+
+      const { data } = await axios.put(`${API_URL}/auth/profile`, formData, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
-      setUser(res.data.user);
-      localStorage.setItem('user', JSON.stringify(res.data.user));
-      setError('Profile updated!');
+
+      const serverUser = data.user;
+
+      // Clean up blob url if it exists from an upload
+      if (localUser.avatar && localUser.avatar.startsWith('blob:')) {
+        URL.revokeObjectURL(localUser.avatar);
+      }
+      
+      // If we were removing the avatar, ensure the final state reflects that.
+      if (updatedUser.avatar === '') {
+        serverUser.avatar = '';
+      }
+
+      // Final update from server, ensuring our optimistic change is respected
+      setUser(serverUser);
+      localStorage.setItem('user', JSON.stringify(serverUser));
+      setSnackbar({ open: true, message: 'Profile updated successfully!', severity: 'success' });
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update profile');
+      console.error('Profile edit failed', err);
+      setSnackbar({ open: true, message: 'Profile update failed.', severity: 'error' });
+      
+      // Revert on failure
+      if (localUser.avatar && localUser.avatar.startsWith('blob:')) {
+        URL.revokeObjectURL(localUser.avatar);
+      }
+      setUser(originalUser);
+      localStorage.setItem('user', JSON.stringify(originalUser)); // Revert local storage
     }
   };
 
+  const handleFilterMenuOpen = (event) => setFilterMenuAnchor(event.currentTarget);
+  const handleFilterMenuClose = () => setFilterMenuAnchor(null);
+
   const handleOpenProfileDialog = async (userOrGroup) => {
+    if (!userOrGroup) return;
     if (userOrGroup && userOrGroup._id && !userOrGroup.members) {
       // Fetch latest user info
       try {
-        const res = await axios.get(`${API_URL}/messages/users/${userOrGroup._id}`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.get(`${API_URL}/users/${userOrGroup._id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         setProfileDialogUser(res.data);
-      } catch {
-        setProfileDialogUser(userOrGroup);
+      } catch (err) {
+        console.error('Failed to fetch user profile', err);
+        setProfileDialogUser(userOrGroup); // Fallback to existing data
       }
     } else {
       setProfileDialogUser(userOrGroup);
@@ -1625,27 +1723,20 @@ function App() {
     setProfileDialogOpen(true);
   };
 
-  const handleFilterMenuOpen = (event) => setFilterMenuAnchor(event.currentTarget);
-  const handleFilterMenuClose = () => setFilterMenuAnchor(null);
-
   const onCropComplete = (croppedArea, croppedAreaPixels) => {
-    setCroppedAreaPixels(prev => {
-      // Only update if the value actually changes
-      if (!prev || prev.x !== croppedAreaPixels.x || prev.y !== croppedAreaPixels.y || prev.width !== croppedAreaPixels.width || prev.height !== croppedAreaPixels.height) {
-        return croppedAreaPixels;
-      }
-      return prev;
-    });
+    setCroppedAreaPixels(croppedAreaPixels);
   };
 
   const getCroppedImg = async (imageSrc, cropPixels) => {
-    const image = new window.Image();
+    const image = new Image();
     image.src = imageSrc;
-    await new Promise((resolve) => { image.onload = resolve; });
     const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const { width, height } = image;
     canvas.width = cropPixels.width;
     canvas.height = cropPixels.height;
-    const ctx = canvas.getContext('2d');
+
     ctx.drawImage(
       image,
       cropPixels.x,
@@ -1657,49 +1748,46 @@ function App() {
       cropPixels.width,
       cropPixels.height
     );
-    return new Promise((resolve) => {
+
+    return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          resolve(reader.result);
-        };
-        reader.readAsDataURL(blob);
+        if (!blob) {
+          reject(new Error('Canvas is empty'));
+          return;
+        }
+        blob.name = 'cropped.jpeg';
+        resolve(blob);
       }, 'image/jpeg');
     });
   };
 
   const handleCropSave = async () => {
     try {
-      if (!cropImageSrc || !croppedAreaPixels) return;
-      const croppedDataUrl = await getCroppedImg(cropImageSrc, croppedAreaPixels);
-      setAvatar(croppedDataUrl);
+      const croppedImageBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
+      await handleProfileEdit(user, croppedImageBlob);
       setCropDialogOpen(false);
-      setCropImageSrc(null);
-    } catch (err) {
-      setError('Failed to crop image');
+    } catch (e) {
+      console.error(e);
+      setError('Failed to crop image.');
     }
   };
 
   const handleCropCancel = () => {
     setCropDialogOpen(false);
-    setCropImageSrc(null);
   };
 
   const handleSend = async () => {
-    if (!message.trim() || !selectedUser) return;
-    console.log('handleSend called with message:', message, 'to user:', selectedUser._id);
-    try {
-      const response = await axios.post(`${API_URL}/messages`, { to: selectedUser._id, content: message }, { headers: { Authorization: `Bearer ${token}` } });
-      const newMessage = response.data;
-      
-      // Emit real-time
-      if (socket && user?.id) socket.emit('sendMessage', { sender: user.id, receiver: selectedUser._id, content: message });
-      
-      setMessages((prev) => [...prev, newMessage]);
-      setLastMessages(prev => {
-        if (!selectedUser?._id) return prev;
-        return { ...prev, [selectedUser._id]: newMessage };
-      });
+    if (message.trim() && selectedUser) {
+      const msg = {
+        to: selectedUser._id,
+        content: message,
+        type: 'text',
+        createdAt: new Date().toISOString(),
+        read: false,
+        sender: user.id
+      };
+      setMessages(prev => [...prev, msg]);
+      setLastMessages(prev => ({ ...prev, [selectedUser._id]: msg }));
       setMessage('');
       setUnreadCounts(prev => {
         const updated = { ...prev, [selectedUser._id]: 0 };
@@ -1708,16 +1796,8 @@ function App() {
         } catch {}
         return updated;
       });
-      
-      // Show notification for sent message
-      console.log('Calling showSentMessageNotification...');
       showSentMessageNotification(message, user.id, selectedUser._id);
-    } catch (err) {
-      if (err.response && err.response.status === 403) {
-        setError('You cannot send messages to this user because you are blocked.');
-      } else {
-        setError('Failed to send message.');
-      }
+      if (socket && user?.id) socket.emit('sendMessage', msg);
     }
   };
 
@@ -1778,6 +1858,84 @@ function App() {
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
   const handleNavMenuOpen = (e) => setNavMenuAnchor(e.currentTarget);
   const handleNavMenuClose = () => setNavMenuAnchor(null);
+
+  const [forgotDialogOpen, setForgotDialogOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStep, setForgotStep] = useState(1); // 1: email, 2: token+password
+  const [forgotToken, setForgotToken] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSuccess, setForgotSuccess] = useState('');
+
+  const handleForgotSubmit = async () => {
+    setForgotError('');
+    setForgotSuccess('');
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setForgotError(data.message || 'Failed to send reset link.');
+      } else {
+        setForgotStep(2);
+        setForgotSuccess('Check your email for the reset link. (Demo: use the token below)');
+        setForgotToken(data.token || '');
+      }
+    } catch (err) {
+      setForgotError('Server error. Please try again.');
+    }
+  };
+
+  const handleForgotReset = async () => {
+    setForgotError('');
+    setForgotSuccess('');
+    if (!forgotToken || !forgotNewPassword || !forgotConfirmPassword) {
+      setForgotError('All fields are required.');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError('Passwords do not match.');
+      return;
+    }
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: forgotToken, newPassword: forgotNewPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setForgotError(data.message || 'Failed to reset password.');
+      } else {
+        setForgotSuccess('Password reset successful! You can now log in.');
+        setTimeout(() => setForgotDialogOpen(false), 1500);
+      }
+    } catch (err) {
+      setForgotError('Server error. Please try again.');
+    }
+  };
+
+  const [authMethodDialogOpen, setAuthMethodDialogOpen] = useState(false);
+  const [pendingAuthUserId, setPendingAuthUserId] = useState('');
+  const [pendingAuthEmail, setPendingAuthEmail] = useState('');
+  const [authMethodError, setAuthMethodError] = useState('');
+  const [authSecretCode, setAuthSecretCode] = useState('');
+  const [authSecretCodeError, setAuthSecretCodeError] = useState('');
+
+  const [deletionDialogOpen, setDeletionDialogOpen] = useState(false);
+  const [deletionDate, setDeletionDate] = useState('');
+  const [deletionEmail, setDeletionEmail] = useState('');
+  const [deletionPassword, setDeletionPassword] = useState('');
+  const [deletionDialogError, setDeletionDialogError] = useState('');
+  const [pendingLoginResponse, setPendingLoginResponse] = useState(null);
+
+  
+                   
+                  
 
   if (!token || !user) {
     return (
@@ -2026,7 +2184,16 @@ function App() {
               onChange={e => setPassword(e.target.value)}
               sx={{ mb: 2 }}
             />
-
+            <Box sx={{ mt: 1, textAlign: 'right' }}>
+              <Button
+                variant="text"
+                size="small"
+                sx={{ color: '#25d366', textTransform: 'none', p: 0, minWidth: 'auto', fontSize: '0.95rem', fontWeight: 500 }}
+                onClick={() => { setForgotDialogOpen(true); setForgotStep(1); setForgotEmail(''); setForgotToken(''); setForgotNewPassword(''); setForgotConfirmPassword(''); setForgotError(''); setForgotSuccess(''); }}
+              >
+                Forgot password?
+              </Button>
+            </Box>
             {/* Don't have an account? Register link */}
             <Box sx={{ mt: 3, textAlign: 'center' }}>
               <Typography variant="body1" color="textSecondary">
@@ -2331,6 +2498,162 @@ function App() {
               }}
             >
               Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Snackbar for notifications */}
+        {snackbar && (
+          <Snackbar open={!!snackbar && snackbar.open} autoHideDuration={6000} onClose={handleSnackbarClose}>
+            <MuiAlert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+              {snackbar.message}
+            </MuiAlert>
+          </Snackbar>
+        )}
+        <Dialog open={forgotDialogOpen} onClose={() => setForgotDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Forgot Password</DialogTitle>
+          <DialogContent>
+            {forgotStep === 1 ? (
+              <>
+                <Typography sx={{ mb: 2 }}>Enter your email to receive a password reset link.</Typography>
+                <TextField
+                  label="Email"
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                />
+                {forgotError && <Typography color="error" sx={{ mt: 1 }}>{forgotError}</Typography>}
+                {forgotSuccess && <Typography color="success.main" sx={{ mt: 1 }}>{forgotSuccess}</Typography>}
+              </>
+            ) : (
+              <>
+                <Typography sx={{ mb: 2 }}>Enter the reset token sent to your email and your new password.</Typography>
+                <TextField
+                  label="Reset Token"
+                  value={forgotToken}
+                  onChange={e => setForgotToken(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                />
+                <TextField
+                  label="New Password"
+                  type="password"
+                  value={forgotNewPassword}
+                  onChange={e => setForgotNewPassword(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                />
+                <TextField
+                  label="Confirm New Password"
+                  type="password"
+                  value={forgotConfirmPassword}
+                  onChange={e => setForgotConfirmPassword(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                />
+                {forgotError && <Typography color="error" sx={{ mt: 1 }}>{forgotError}</Typography>}
+                {forgotSuccess && <Typography color="success.main" sx={{ mt: 1 }}>{forgotSuccess}</Typography>}
+              </>
+            )}
+          </DialogContent>
+          <DialogActions>
+            {forgotStep === 1 ? (
+              <Button onClick={handleForgotSubmit} variant="contained" sx={{ backgroundColor: '#25d366', color: '#fff' }} disabled={!forgotEmail}>
+                Send Reset Link
+              </Button>
+            ) : (
+              <Button onClick={handleForgotReset} variant="contained" sx={{ backgroundColor: '#25d366', color: '#fff' }} disabled={!forgotToken || !forgotNewPassword || !forgotConfirmPassword}>
+                Reset Password
+              </Button>
+            )}
+            <Button onClick={() => setForgotDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
+          </DialogActions>
+        </Dialog>
+        {/* Auth Method Choice Dialog */}
+        <Dialog open={authMethodDialogOpen} onClose={() => setAuthMethodDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Choose Authentication Method</DialogTitle>
+          <DialogContent>
+            <Typography sx={{ mb: 2 }}>How would you like to authenticate?</Typography>
+            <TextField
+              label="Secret Code"
+              type="password"
+              value={authSecretCode}
+              onChange={e => setAuthSecretCode(e.target.value)}
+              fullWidth
+              margin="normal"
+              inputProps={{ maxLength: 32 }}
+            />
+            {authSecretCodeError && <Typography color="error" sx={{ mt: 1 }}>{authSecretCodeError}</Typography>}
+            {user?.twoFactorEnabled && (
+              <>
+                <TextField
+                  label="Secret Code"
+                  type="password"
+                  value={authSecretCode}
+                  onChange={e => setAuthSecretCode(e.target.value)}
+                  fullWidth
+                  margin="normal"
+                  inputProps={{ maxLength: 32 }}
+                />
+                {authSecretCodeError && <Typography color="error" sx={{ mt: 1 }}>{authSecretCodeError}</Typography>}
+              </>
+            )}
+            <Button onClick={async () => {
+              if (user?.twoFactorEnabled) {
+                setAuthSecretCodeError('');
+                if (!authSecretCode || authSecretCode.length < 4 || !/^[a-zA-Z0-9]+$/.test(authSecretCode)) {
+                  setAuthSecretCodeError('Secret code must be at least 4 alphanumeric characters.');
+                  return;
+                }
+                // Optionally, verify secret code with backend here if needed
+              }
+              setAuthMethodDialogOpen(false);
+            }} variant="outlined" fullWidth sx={{ mb: 2, color: '#25d366', borderColor: '#25d366' }}>
+              Use Authenticator App (2FA)
+            </Button>
+            {authMethodError && <Typography color="error" sx={{ mt: 2 }}>{authMethodError}</Typography>}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAuthMethodDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
+          </DialogActions>
+        </Dialog>
+        <Dialog open={deletionDialogOpen} onClose={() => setDeletionDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Account Scheduled for Deletion</DialogTitle>
+          <DialogContent>
+            <Typography sx={{ mb: 2 }}>Your account is scheduled for deletion on {deletionDate}.<br/>Do you want to keep your account?</Typography>
+            {deletionDialogError && <Typography color="error" sx={{ mt: 2 }}>{deletionDialogError}</Typography>}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeletionDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                setDeletionDialogError('');
+                try {
+                  const res = await axios.post(`${API_URL}/auth/cancel-deletion`, { email: deletionEmail, password: deletionPassword });
+                  if (res.data.success) {
+                    setDeletionDialogOpen(false);
+                    // If there was a pending login response, proceed to 2FA if needed
+                    if (pendingLoginResponse && pendingLoginResponse.twoFactorRequired) {
+                      setPendingAuthUserId(pendingLoginResponse.userId);
+                      setPendingAuthEmail(deletionEmail);
+                      setAuthMethodDialogOpen(true);
+                      setAuthMethodError('');
+                    } else {
+                      // Otherwise, retry login
+                      setTimeout(() => handleLogin(), 500);
+                    }
+                  } else {
+                    setDeletionDialogError(res.data.message || 'Failed to cancel deletion.');
+                  }
+                } catch (err) {
+                  setDeletionDialogError(err.response?.data?.message || 'Failed to cancel deletion.');
+                }
+              }}
+              variant="contained"
+              sx={{ backgroundColor: '#25d366', color: '#fff' }}
+            >
+              Keep Account
             </Button>
           </DialogActions>
         </Dialog>
@@ -3314,9 +3637,9 @@ function App() {
         <Snackbar open={!!error} autoHideDuration={4000} onClose={() => setError('')} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
           sx={{ mt: 3 }}
         >
-          <MuiAlert onClose={() => setError('')} severity="error" sx={{ maxWidth: 400, borderRadius: 2, mx: 'auto', boxShadow: 3 }} elevation={6} variant="filled">
+          <Alert onClose={() => setError('')} severity="error" sx={{ maxWidth: 400, borderRadius: 2, mx: 'auto', boxShadow: 3 }} elevation={6} variant="filled">
             {error}
-          </MuiAlert>
+          </Alert>
         </Snackbar>
         {/* Clear Chat Confirmation Dialog */}
         <Dialog open={clearChatDialogOpen} onClose={() => setClearChatDialogOpen(false)}>
@@ -3418,6 +3741,13 @@ function App() {
           </DialogActions>
         </Dialog>
       </Box>
+      {snackbar && (
+        <Snackbar open={!!snackbar && snackbar.open} autoHideDuration={6000} onClose={handleSnackbarClose}>
+          <MuiAlert onClose={handleSnackbarClose} severity={snackbar.severity} sx={{ width: '100%' }}>
+            {snackbar.message}
+          </MuiAlert>
+        </Snackbar>
+      )}
     </ThemeProvider>
   );
 }
