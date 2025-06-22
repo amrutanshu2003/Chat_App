@@ -62,6 +62,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import ChatIcon from '@mui/icons-material/Chat';
 import PhoneIcon from '@mui/icons-material/Phone';
 import NotificationsIcon from '@mui/icons-material/Notifications';
+import EditIcon from '@mui/icons-material/Edit';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
 
@@ -137,21 +138,6 @@ function App() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [verifyLoading, setVerifyLoading] = useState(false);
-  const [resendTimer, setResendTimer] = useState(0);
-  const [canResend, setCanResend] = useState(true);
-  const [emailOtp, setEmailOtp] = useState('');
-  const [emailOtpSent, setEmailOtpSent] = useState(false);
-  const [emailOtpVerified, setEmailOtpVerified] = useState(false);
-  const [emailOtpLoading, setEmailOtpLoading] = useState(false);
-  const [emailVerifyLoading, setEmailVerifyLoading] = useState(false);
-  const [emailResendTimer, setEmailResendTimer] = useState(0);
-  const [canEmailResend, setCanEmailResend] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')) || null);
   const [users, setUsers] = useState([]);
@@ -275,6 +261,8 @@ function App() {
   const [audioChunks, setAudioChunks] = useState([]);
   const [recordingTimer, setRecordingTimer] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [isAvatarHovered, setIsAvatarHovered] = useState(false);
+  const [welcomeText, setWelcomeText] = useState('');
 
   const [audioStates, setAudioStates] = useState({});
   const audioRefs = useRef({});
@@ -286,6 +274,23 @@ function App() {
       audio.currentTime = time;
     }
   };
+
+  useEffect(() => {
+    if (!token && !user) {
+      const fullWelcomeText = 'Welcome to Social X';
+      let i = 0;
+      setWelcomeText('');
+      const typingInterval = setInterval(() => {
+        if (i < fullWelcomeText.length) {
+          setWelcomeText(prevText => prevText + fullWelcomeText.charAt(i));
+          i++;
+        } else {
+          clearInterval(typingInterval);
+        }
+      }, 120);
+      return () => clearInterval(typingInterval);
+    }
+  }, [token, user]);
 
   const theme = createTheme({
     palette: {
@@ -323,6 +328,39 @@ function App() {
               main: '#1976d2',
             },
           }),
+    },
+    components: {
+      MuiTextField: {
+        styleOverrides: {
+          root: {
+            '& .MuiOutlinedInput-root': {
+              '&.Mui-focused fieldset': {
+                borderColor: '#25d366',
+              },
+            },
+            '& label.Mui-focused': {
+              color: '#25d366',
+            },
+            // Style for autofill
+            '& input:-webkit-autofill, & input:-webkit-autofill:hover, & input:-webkit-autofill:focus, & input:-webkit-autofill:active': {
+              '-webkit-box-shadow': darkMode 
+                ? '0 0 0 30px #333 inset !important' 
+                : '0 0 0 30px #f0f0f0 inset !important',
+              '-webkit-text-fill-color': darkMode ? '#fff !important' : '#000 !important',
+              caretColor: darkMode ? '#fff' : '#000', // Ensure cursor color matches text
+              borderRadius: 'inherit', // Maintain the border radius
+            },
+          },
+        },
+      },
+      MuiPaper: {
+        styleOverrides: {
+          root: {
+            backgroundColor: darkMode ? '#222' : '#fff',
+            color: darkMode ? '#fff' : '#222',
+          },
+        },
+      },
     },
   });
 
@@ -1229,48 +1267,35 @@ function App() {
   };
 
   const handleRegister = async (e) => {
-    e.preventDefault();
-    
-    if (!username.trim() || !email.trim() || !password.trim() || !phoneNumber.trim()) {
-      setError('All fields are required');
-      return;
-    }
-    
-    if (!otpVerified) {
-      setError('Please verify your phone number with OTP');
-      return;
-    }
-    
-    if (!emailOtpVerified) {
-      setError('Please verify your email with OTP');
-      return;
-    }
-    
-    setLoading(true);
+    if (e) e.preventDefault();
+    setError('');
     try {
       const formData = new FormData();
       formData.append('username', username);
       formData.append('email', email);
       formData.append('password', password);
-      formData.append('phoneNumber', phoneNumber);
-      if (avatar) {
-        formData.append('avatar', avatar);
+      
+      // Handle avatar if it's a data URL
+      if (avatar && avatar.startsWith('data:')) {
+        // Convert data URL to file object
+        const response = await fetch(avatar);
+        const blob = await response.blob();
+        const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
+        formData.append('avatar', file);
       }
       
-      const response = await axios.post(`${API_URL}/auth/register`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const res = await axios.post(`${API_URL}/auth/register`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
-      
-      setToken(response.data.token);
-      setUser(response.data.user);
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-      setError('');
-      setShowLogin(false);
+      setToken(res.data.token);
+      setUser(res.data.user);
+      localStorage.setItem('token', res.data.token);
+      localStorage.setItem('user', JSON.stringify(res.data.user));
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
-    } finally {
-      setLoading(false);
+      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+      console.error(err);
     }
   };
 
@@ -1287,271 +1312,6 @@ function App() {
     }
   };
 
-  const sendOTP = async () => {
-    if (!phoneNumber.trim()) {
-      setError('Please enter a valid phone number');
-      return;
-    }
-    
-    setOtpLoading(true);
-    try {
-      await axios.post(`${API_URL}/auth/send-otp`, { phoneNumber });
-      setOtpSent(true);
-      setError('');
-      
-      // Start resend timer (10 seconds)
-      setResendTimer(10);
-      setCanResend(false);
-      
-      const timer = setInterval(() => {
-        setResendTimer(prev => {
-          if (prev <= 1) {
-            setCanResend(true);
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-    } catch (err) {
-      if (err.response?.status === 429) {
-        // Rate limiting error
-        setError(err.response.data.message);
-        // Extract remaining time from error message and set timer
-        const match = err.response.data.message.match(/(\d+) seconds/);
-        if (match) {
-          const remainingTime = parseInt(match[1]);
-          setResendTimer(remainingTime);
-          setCanResend(false);
-          
-          const timer = setInterval(() => {
-            setResendTimer(prev => {
-              if (prev <= 1) {
-                setCanResend(true);
-                clearInterval(timer);
-                return 0;
-              }
-              return prev - 1;
-            });
-          }, 1000);
-        }
-      } else {
-        setError(err.response?.data?.message || 'Failed to send OTP');
-      }
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
-  const verifyOTP = async () => {
-    if (!otp.trim()) {
-      setError('Please enter the OTP');
-      return;
-    }
-    
-    setVerifyLoading(true);
-    try {
-      await axios.post(`${API_URL}/auth/verify-otp`, { phoneNumber, otp });
-      setOtpVerified(true);
-      setError('');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Invalid OTP');
-    } finally {
-      setVerifyLoading(false);
-    }
-  };
-
-  const resendOTP = async () => {
-    if (!phoneNumber.trim()) {
-      setError('Please enter a valid phone number');
-      return;
-    }
-    
-    setOtpLoading(true);
-    try {
-      await axios.post(`${API_URL}/auth/send-otp`, { phoneNumber });
-      setOtpSent(true);
-      setError('');
-      
-      // Start resend timer (10 seconds)
-      setResendTimer(10);
-      setCanResend(false);
-      
-      const timer = setInterval(() => {
-        setResendTimer(prev => {
-          if (prev <= 1) {
-            setCanResend(true);
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-    } catch (err) {
-      if (err.response?.status === 429) {
-        // Rate limiting error
-        setError(err.response.data.message);
-        // Extract remaining time from error message and set timer
-        const match = err.response.data.message.match(/(\d+) seconds/);
-        if (match) {
-          const remainingTime = parseInt(match[1]);
-          setResendTimer(remainingTime);
-          setCanResend(false);
-          
-          const timer = setInterval(() => {
-            setResendTimer(prev => {
-              if (prev <= 1) {
-                setCanResend(true);
-                clearInterval(timer);
-                return 0;
-              }
-              return prev - 1;
-            });
-          }, 1000);
-        }
-      } else {
-        setError(err.response?.data?.message || 'Failed to send OTP');
-      }
-    } finally {
-      setOtpLoading(false);
-    }
-  };
-
-  const sendEmailOTP = async () => {
-    if (!email.trim()) {
-      setError('Please enter a valid email address');
-      return;
-    }
-    
-    setEmailOtpLoading(true);
-    try {
-      await axios.post(`${API_URL}/auth/send-email-otp`, { email });
-      setEmailOtpSent(true);
-      setError('');
-      
-      // Start resend timer (10 seconds)
-      setEmailResendTimer(10);
-      setCanEmailResend(false);
-      
-      const timer = setInterval(() => {
-        setEmailResendTimer(prev => {
-          if (prev <= 1) {
-            setCanEmailResend(true);
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-    } catch (err) {
-      if (err.response?.status === 429) {
-        // Rate limiting error
-        setError(err.response.data.message);
-        // Extract remaining time from error message and set timer
-        const match = err.response.data.message.match(/(\d+) seconds/);
-        if (match) {
-          const remainingTime = parseInt(match[1]);
-          setEmailResendTimer(remainingTime);
-          setCanEmailResend(false);
-          
-          const timer = setInterval(() => {
-            setEmailResendTimer(prev => {
-              if (prev <= 1) {
-                setCanEmailResend(true);
-                clearInterval(timer);
-                return 0;
-              }
-              return prev - 1;
-            });
-          }, 1000);
-        }
-      } else {
-        setError(err.response?.data?.message || 'Failed to send email OTP');
-      }
-    } finally {
-      setEmailOtpLoading(false);
-    }
-  };
-
-  const verifyEmailOTP = async () => {
-    if (!emailOtp.trim()) {
-      setError('Please enter the email OTP');
-      return;
-    }
-    
-    setEmailVerifyLoading(true);
-    try {
-      await axios.post(`${API_URL}/auth/verify-email-otp`, { email, otp: emailOtp });
-      setEmailOtpVerified(true);
-      setError('');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Invalid email OTP');
-    } finally {
-      setEmailVerifyLoading(false);
-    }
-  };
-
-  const resendEmailOTP = async () => {
-    if (!email.trim()) {
-      setError('Please enter a valid email address');
-      return;
-    }
-    
-    setEmailOtpLoading(true);
-    try {
-      await axios.post(`${API_URL}/auth/send-email-otp`, { email });
-      setEmailOtpSent(true);
-      setError('');
-      
-      // Start resend timer (10 seconds)
-      setEmailResendTimer(10);
-      setCanEmailResend(false);
-      
-      const timer = setInterval(() => {
-        setEmailResendTimer(prev => {
-          if (prev <= 1) {
-            setCanEmailResend(true);
-            clearInterval(timer);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      
-    } catch (err) {
-      if (err.response?.status === 429) {
-        // Rate limiting error
-        setError(err.response.data.message);
-        // Extract remaining time from error message and set timer
-        const match = err.response.data.message.match(/(\d+) seconds/);
-        if (match) {
-          const remainingTime = parseInt(match[1]);
-          setEmailResendTimer(remainingTime);
-          setCanEmailResend(false);
-          
-          const timer = setInterval(() => {
-            setEmailResendTimer(prev => {
-              if (prev <= 1) {
-                setCanEmailResend(true);
-                clearInterval(timer);
-                return 0;
-              }
-              return prev - 1;
-            });
-          }, 1000);
-        }
-      } else {
-        setError(err.response?.data?.message || 'Failed to send email OTP');
-      }
-    } finally {
-      setEmailOtpLoading(false);
-    }
-  };
-
-  // Add this function in the App component:
   const handleDownload = async () => {
     try {
       const response = await fetch(dialogImageUrl, { mode: 'cors' });
@@ -1769,8 +1529,8 @@ function App() {
     if (user && user.id === senderId) {
       return { avatar: user.avatar, username: user.username };
     }
-    const found = users.find(u => u._id === senderId);
-    return { avatar: found?.avatar || user.avatar, username: found?.username || user.username };
+    const senderInfo = users.find(u => u._id === senderId);
+    return { avatar: senderInfo?.avatar || user.avatar, username: senderInfo?.username || user.username };
   }
 
   const handleLogout = () => {
@@ -2012,6 +1772,8 @@ function App() {
   // Place this with other hooks at the top of App()
   const [navMenuAnchor, setNavMenuAnchor] = useState(null);
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
   const handleNavMenuOpen = (e) => setNavMenuAnchor(e.currentTarget);
   const handleNavMenuClose = () => setNavMenuAnchor(null);
 
@@ -2067,11 +1829,11 @@ function App() {
             transformOrigin={{ vertical: 'top', horizontal: 'right' }}
             PaperProps={{ sx: { minWidth: 180, borderRadius: 2, boxShadow: 3, bgcolor: darkMode ? '#222' : '#fff' } }}
           >
-            <MenuItem onClick={() => { setPage('login'); handleNavMenuClose(); }} sx={{ gap: 1 }}>
+            <MenuItem onClick={() => { setLoginDialogOpen(true); handleNavMenuClose(); }} sx={{ gap: 1 }}>
               <LoginIcon sx={{ color: darkMode ? '#fff' : '#1976d2' }} />
               Login
             </MenuItem>
-            <MenuItem onClick={() => { setPage('register'); handleNavMenuClose(); }} sx={{ gap: 1 }}>
+            <MenuItem onClick={() => { setRegisterDialogOpen(true); handleNavMenuClose(); }} sx={{ gap: 1 }}>
               <PersonAddIcon sx={{ color: darkMode ? '#fff' : '#1976d2' }} />
               Sign Up
             </MenuItem>
@@ -2079,402 +1841,498 @@ function App() {
         </Box>
         {/* Main Content */}
         <Box minHeight="100vh" width="100vw" bgcolor={darkMode ? '#000' : '#e9eaf0'} sx={{ pt: 7, transition: 'background 0.2s' }}>
-        <Container maxWidth="xs">
-            <Box mt={4} p={4} component={Paper} sx={{
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              bgcolor: darkMode ? '#111' : '#fff',
-              color: darkMode ? '#fff' : '#222',
-              boxShadow: darkMode ? 4 : 2,
-              borderRadius: 3,
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none',
-              '&::-webkit-scrollbar': { display: 'none' }
-            }}>
-              {/* Social X Icon and Text */}
-              <Box display="flex" alignItems="center" justifyContent="center" mb={3}>
-                <SocialXIcon size={48} color="#25d366" />
-                <Typography variant="h4" fontWeight={700} color={darkMode ? '#fff' : '#000'} sx={{ ml: 2, letterSpacing: 1 }}>
+          <Container maxWidth="md">
+            <Box mt={8} textAlign="center">
+              {/* Welcome Screen */}
+              <Box display="flex" alignItems="center" justifyContent="center" mb={4}>
+                <SocialXIcon size={80} color="#25d366" />
+                <Typography variant="h2" fontWeight={700} color={darkMode ? '#fff' : '#000'} sx={{ ml: 3, letterSpacing: 2 }}>
                   Social X
                 </Typography>
               </Box>
-            <Typography variant="h5" align="center" gutterBottom>
-              {page === 'login' ? 'Login' : 'Register'}
-            </Typography>
-            {page === 'register' && (
-              <>
-                {/* Centered round upload button with camera icon or avatar */}
-                <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" my={2}>
-                  {avatar ? (
-                    <Button
-                      variant="outlined"
-                      component="label"
-                      sx={{
-                        borderRadius: '50%',
-                        minWidth: 72,
-                        minHeight: 72,
-                        width: 72,
-                        height: 72,
-                        p: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        position: 'relative',
-                        overflow: 'hidden',
-                        transition: 'background 0.2s',
-                        background: '#fff',
-                        '&:hover': {
-                          background: '#e0e0e0',
-                        },
-                      }}
-                    >
-                      <Avatar src={avatar} sx={{ width: 72, height: 72 }} />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        onChange={e => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                              setCropImageSrc(reader.result);
-                              setCropDialogOpen(true);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outlined"
-                      component="label"
-                      sx={{
-                        borderRadius: '50%',
-                        minWidth: 72,
-                        minHeight: 72,
-                        width: 72,
-                        height: 72,
-                        p: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        position: 'relative',
-                        overflow: 'hidden',
-                        transition: 'background 0.2s',
-                        background: '#fff',
-                        '&:hover': {
-                          background: '#e0e0e0',
-                        },
-                      }}
-                    >
-                      <CameraAltIcon sx={{ fontSize: 32, color: '#555' }} />
-                      <input
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        onChange={e => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                              setCropImageSrc(reader.result);
-                              setCropDialogOpen(true);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </Button>
-                  )}
-                </Box>
-                {/* Crop Dialog for register avatar */}
-                <Dialog open={cropDialogOpen} onClose={handleCropCancel} maxWidth="xs" fullWidth>
-                  <DialogTitle>Crop Image</DialogTitle>
-                  <DialogContent>
-                    {cropImageSrc && (
-                      <Box position="relative" width="100%" height={300} bgcolor="#333">
-                        <Cropper
-                          image={cropImageSrc}
-                          crop={crop}
-                          zoom={zoom}
-                          aspect={1}
-                          onCropChange={setCrop}
-                          onZoomChange={setZoom}
-                          onCropComplete={onCropComplete}
-                        />
-                      </Box>
-                    )}
-                    <Slider
-                      value={zoom}
-                      min={1}
-                      max={3}
-                      step={0.1}
-                      onChange={(e, z) => setZoom(z)}
-                      sx={{ mt: 2 }}
-                    />
-                  </DialogContent>
-                  <DialogActions>
-                    <Button onClick={handleCropCancel}>Cancel</Button>
-                    <Button onClick={handleCropSave} variant="contained">Save</Button>
-                  </DialogActions>
-                </Dialog>
-                <TextField label="Username" fullWidth margin="normal" value={username} onChange={e => setUsername(e.target.value)} />
-                <TextField label="Email" fullWidth margin="normal" value={email} onChange={e => setEmail(e.target.value)} />
-                <TextField label="Password" type="password" fullWidth margin="normal" value={password} onChange={e => setPassword(e.target.value)} />
-                  
-                  {/* Phone Number and OTP Section */}
-                  <TextField 
-                    label="Phone Number" 
-                    fullWidth 
-                    margin="normal" 
-                    value={phoneNumber} 
-                    onChange={e => setPhoneNumber(e.target.value)}
-                    placeholder="+1234567890"
-                  />
-                  
-                  {!otpSent ? (
-                    <Button 
-                      variant="outlined" 
-                      fullWidth 
-                      sx={{ mt: 1 }} 
-                      onClick={sendOTP}
-                      disabled={otpLoading || !phoneNumber.trim()}
-                    >
-                      {otpLoading ? 'Sending OTP...' : 'Send OTP'}
-                    </Button>
-                  ) : (
-                    <Box sx={{ mt: 2 }}>
-                      <TextField 
-                        label="Enter OTP" 
-                        fullWidth 
-                        margin="normal" 
-                        value={otp} 
-                        onChange={e => setOtp(e.target.value)}
-                        placeholder="Enter 6-digit OTP"
-                        disabled={otpVerified}
-                      />
-                      {!otpVerified ? (
-                        <div className="otp-buttons">
-                          <button 
-                            type="button" 
-                            onClick={verifyOTP} 
-                            disabled={verifyLoading || !otp.trim()}
-                            className="verify-otp-btn"
-                          >
-                            {verifyLoading ? 'Verifying...' : 'Verify OTP'}
-                          </button>
-                          <button 
-                            type="button" 
-                            onClick={resendOTP} 
-                            disabled={!canResend || otpLoading}
-                            className="resend-otp-btn"
-                          >
-                            {otpLoading ? 'Sending...' : 
-                             canResend ? 'Resend OTP' : 
-                             `Resend in ${resendTimer}s`}
-                          </button>
-                        </div>
-                      ) : (
-                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, p: 1, bgcolor: 'success.light', borderRadius: 1 }}>
-                          <Typography variant="body2" color="success.contrastText">
-                            ✓ Phone number verified
-                          </Typography>
-                        </Box>
-                      )}
-                      <Button 
-                        variant="text" 
-                        size="small" 
-                        sx={{ mt: 1 }} 
-                        onClick={() => {
-                          setOtpSent(false);
-                          setOtpVerified(false);
-                          setOtp('');
-                        }}
-                      >
-                        Change Phone Number
-                      </Button>
-                    </Box>
-                  )}
-                  
-                  {/* Email OTP Section */}
-                  {!emailOtpSent ? (
-                    <Button 
-                      variant="outlined" 
-                      fullWidth 
-                      sx={{ mt: 2 }} 
-                      onClick={sendEmailOTP}
-                      disabled={emailOtpLoading || !email.trim()}
-                    >
-                      {emailOtpLoading ? 'Sending Email OTP...' : 'Send Email OTP'}
-                    </Button>
-                  ) : (
-                    <Box sx={{ mt: 2 }}>
-                      <TextField 
-                        label="Enter Email OTP" 
-                        fullWidth 
-                        margin="normal" 
-                        value={emailOtp} 
-                        onChange={e => setEmailOtp(e.target.value)}
-                        placeholder="Enter 6-digit Email OTP"
-                        disabled={emailOtpVerified}
-                      />
-                      {!emailOtpVerified ? (
-                        <div className="otp-buttons">
-                          <button 
-                            type="button" 
-                            onClick={verifyEmailOTP} 
-                            disabled={emailVerifyLoading || !emailOtp.trim()}
-                            className="verify-otp-btn"
-                          >
-                            {emailVerifyLoading ? 'Verifying...' : 'Verify Email OTP'}
-                          </button>
-                          <button 
-                            type="button" 
-                            onClick={resendEmailOTP} 
-                            disabled={!canEmailResend || emailOtpLoading}
-                            className="resend-otp-btn"
-                          >
-                            {emailOtpLoading ? 'Sending...' : 
-                             canEmailResend ? 'Resend Email OTP' : 
-                             `Resend in ${emailResendTimer}s`}
-                          </button>
-                        </div>
-                      ) : (
-                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, p: 1, bgcolor: 'success.light', borderRadius: 1 }}>
-                          <Typography variant="body2" color="success.contrastText">
-                            ✓ Email verified
-                          </Typography>
-                        </Box>
-                      )}
-                      <Button 
-                        variant="text" 
-                        size="small" 
-                        sx={{ mt: 1 }} 
-                        onClick={() => {
-                          setEmailOtpSent(false);
-                          setEmailOtpVerified(false);
-                          setEmailOtp('');
-                        }}
-                      >
-                        Change Email
-                      </Button>
-                    </Box>
-                  )}
-              </>
-            )}
-            {page === 'login' && (
-              <>
-                <TextField label="Email" fullWidth margin="normal" value={email} onChange={e => setEmail(e.target.value)} />
-                <TextField label="Password" type="password" fullWidth margin="normal" value={password} onChange={e => setPassword(e.target.value)} />
-              </>
-            )}
-            <Button variant="contained" color="primary" fullWidth sx={{ mt: 2 }} onClick={page === 'login' ? handleLogin : handleRegister}>
-              {page === 'login' ? 'Login' : 'Register'}
-            </Button>
-              <Button color="secondary" fullWidth sx={{ mt: 1 }} onClick={() => {
-                setPage(page === 'login' ? 'register' : 'login');
-                // Reset OTP state when switching pages
-                setOtpSent(false);
-                setOtpVerified(false);
-                setOtp('');
-                setPhoneNumber('');
-                setEmailOtpSent(false);
-                setEmailOtpVerified(false);
-                setEmailOtp('');
-                setError('');
-              }}>
-              {page === 'login' ? 'No account? Register' : 'Have an account? Login'}
-            </Button>
-          </Box>
-          {error && (
-            <Box position="fixed" top={16} left={0} right={0} zIndex={9999} display="flex" justifyContent="center">
-              <Paper sx={{ p: 2, bgcolor: 'error.main', color: '#fff' }}>{error}</Paper>
+              <Typography variant="h4" color={darkMode ? '#fff' : '#222'} sx={{ mb: 3, fontWeight: 500, minHeight: '2.5rem' }}>
+                {welcomeText}
+              </Typography>
+              <Typography variant="h6" color={darkMode ? '#aaa' : '#666'} sx={{ mb: 6, maxWidth: 600, mx: 'auto' }}>
+                Connect with friends and family through instant messaging, voice messages, and file sharing. 
+                Experience real-time communication with modern features and beautiful design.
+              </Typography>
+              <Box display="flex" gap={3} justifyContent="center" flexWrap="wrap">
+                <Button 
+                  variant="contained" 
+                  size="large"
+                  onClick={() => setLoginDialogOpen(true)}
+                  sx={{ 
+                    bgcolor: '#25d366',
+                    '&:hover': { bgcolor: '#1ea952' },
+                    px: 4,
+                    py: 1.5,
+                    fontSize: 18,
+                    fontWeight: 600
+                  }}
+                >
+                  Get Started
+                </Button>
+                <Button 
+                  variant="outlined" 
+                  size="large"
+                  onClick={() => setAboutDialogOpen(true)}
+                  sx={{ 
+                    borderColor: '#25d366',
+                    color: '#25d366',
+                    '&:hover': { 
+                      borderColor: '#1ea952',
+                      bgcolor: 'rgba(37, 211, 102, 0.1)'
+                    },
+                    px: 4,
+                    py: 1.5,
+                    fontSize: 18,
+                    fontWeight: 600
+                  }}
+                >
+                  Learn More
+                </Button>
+              </Box>
             </Box>
-          )}
-        </Container>
-      </Box>
-      {/* About Dialog */}
-      <Dialog 
-        open={aboutDialogOpen} 
-        onClose={() => setAboutDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{ 
-          sx: { 
-            bgcolor: darkMode ? '#222' : '#fff',
-            color: darkMode ? '#fff' : '#222'
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
-        }}>
-          <SocialXIcon size={32} color="#25d366" />
-          <Typography variant="h6" fontWeight={700}>
-            About Social X
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Typography variant="body1" paragraph>
-            Social X is a modern, real-time chat application built with React and Node.js. 
-            Connect with friends and family through instant messaging, voice messages, and file sharing.
-          </Typography>
-          <Typography variant="h6" sx={{ mt: 3, mb: 2, color: '#25d366' }}>
-            Features:
-          </Typography>
-          <Box component="ul" sx={{ pl: 2 }}>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <ChatIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Real-time messaging with typing indicators
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <MicIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Voice message recording and playback
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AttachFileIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              File sharing (images, documents, audio, video)
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <DarkModeIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Dark/Light theme support
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PhoneIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Phone and email OTP verification
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <NotificationsIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Push notifications
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PersonIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              User status and last seen
-            </Typography>
+          </Container>
+        </Box>
+        {error && (
+          <Box position="fixed" top={16} left={0} right={0} zIndex={9999} display="flex" justifyContent="center">
+            <Paper sx={{ p: 2, bgcolor: 'error.main', color: '#fff' }}>{error}</Paper>
           </Box>
-          <Typography variant="body2" sx={{ mt: 3, color: darkMode ? '#aaa' : '#666' }}>
-            Version 1.0.0 • Built with React, Node.js, Socket.io, and Material-UI
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: `1px solid ${darkMode ? '#444' : '#e0e0e0'}` }}>
-          <Button 
-            onClick={() => setAboutDialogOpen(false)}
-            variant="contained"
-            sx={{ 
-              bgcolor: '#25d366',
-              '&:hover': { bgcolor: '#1ea952' }
-            }}
-          >
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </ThemeProvider>
+        )}
+
+        {/* About Dialog */}
+        <Dialog 
+          open={aboutDialogOpen} 
+          onClose={() => setAboutDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{ 
+            sx: { 
+              bgcolor: darkMode ? '#222' : '#fff',
+              color: darkMode ? '#fff' : '#222'
+            } 
+          }}
+        >
+          <DialogTitle sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 2,
+            borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
+          }}>
+            <SocialXIcon size={32} color="#25d366" />
+            <Typography variant="h6" fontWeight={700}>
+              About Social X
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 3 }}>
+            <Typography variant="body1" paragraph>
+              Social X is a modern, real-time chat application built with React and Node.js. 
+              Connect with friends and family through instant messaging, voice messages, and file sharing.
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 3, mb: 2, color: '#25d366' }}>
+              Features:
+            </Typography>
+            <Box component="ul" sx={{ pl: 2 }}>
+              <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ChatIcon sx={{ fontSize: 20, color: '#25d366' }} />
+                Real-time messaging with typing indicators
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <MicIcon sx={{ fontSize: 20, color: '#25d366' }} />
+                Voice message recording and playback
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AttachFileIcon sx={{ fontSize: 20, color: '#25d366' }} />
+                File sharing (images, documents, audio, video)
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <DarkModeIcon sx={{ fontSize: 20, color: '#25d366' }} />
+                Dark/Light theme support
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PhoneIcon sx={{ fontSize: 20, color: '#25d366' }} />
+                Phone and email OTP verification
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <NotificationsIcon sx={{ fontSize: 20, color: '#25d366' }} />
+                Push notifications
+              </Typography>
+              <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PersonIcon sx={{ fontSize: 20, color: '#25d366' }} />
+                User status and last seen
+              </Typography>
+            </Box>
+            <Typography variant="body2" sx={{ mt: 3, color: darkMode ? '#aaa' : '#666' }}>
+              Version 1.0.0 • Built with React, Node.js, Socket.io, and Material-UI
+            </Typography>
+          </DialogContent>
+          <DialogActions sx={{ p: 2, borderTop: `1px solid ${darkMode ? '#444' : '#e0e0e0'}` }}>
+            <Button 
+              onClick={() => setAboutDialogOpen(false)}
+              variant="contained"
+              sx={{ 
+                bgcolor: '#25d366',
+                '&:hover': { bgcolor: '#1ea952' }
+              }}
+            >
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Login Dialog */}
+        <Dialog 
+          open={loginDialogOpen} 
+          onClose={() => setLoginDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{ 
+            sx: { 
+              bgcolor: darkMode ? '#222' : '#fff',
+              color: darkMode ? '#fff' : '#222'
+            } 
+          }}
+        >
+          <DialogTitle sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 2,
+            borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
+          }}>
+            <SocialXIcon size={32} color="#25d366" />
+            <Typography variant="h6" fontWeight={700}>
+              Login to Social X
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 3 }}>
+            <TextField 
+              label="Email" 
+              fullWidth 
+              margin="normal" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <TextField 
+              label="Password" 
+              type="password" 
+              fullWidth 
+              margin="normal" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)}
+              sx={{ mb: 2 }}
+            />
+
+            {/* Don't have an account? Register link */}
+            <Box sx={{ mt: 3, textAlign: 'center' }}>
+              <Typography variant="body1" color="textSecondary">
+                Don't have an account?{' '}
+                <Button 
+                  variant="text" 
+                  size="medium" 
+                  onClick={() => {
+                    setLoginDialogOpen(false);
+                    setRegisterDialogOpen(true);
+                  }}
+                  sx={{ 
+                    color: '#25d366',
+                    textTransform: 'none',
+                    p: 0.5,
+                    minWidth: 'auto',
+                    fontSize: '1rem',
+                    fontWeight: 500,
+                    '&:hover': { 
+                      bgcolor: 'transparent',
+                      textDecoration: 'underline'
+                    }
+                  }}
+                >
+                  Register
+                </Button>
+              </Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ p: 2, borderTop: `1px solid ${darkMode ? '#444' : '#e0e0e0'}` }}>
+            <Button 
+              onClick={() => setLoginDialogOpen(false)}
+              sx={{ 
+                mr: 1,
+                color: '#25d366',
+                '&:hover': {
+                  backgroundColor: 'rgba(37, 211, 102, 0.1)'
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                handleLogin();
+                setLoginDialogOpen(false);
+              }}
+              variant="contained"
+              sx={{ 
+                bgcolor: '#25d366',
+                '&:hover': { bgcolor: '#1ea952' }
+              }}
+            >
+              Login
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Register Dialog */}
+        <Dialog 
+          open={registerDialogOpen} 
+          onClose={() => setRegisterDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{ 
+            sx: { 
+              bgcolor: darkMode ? '#222' : '#fff',
+              color: darkMode ? '#fff' : '#222',
+              maxHeight: '90vh'
+            } 
+          }}
+        >
+          <DialogTitle sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 2,
+            borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
+          }}>
+            <SocialXIcon size={32} color="#25d366" />
+            <Typography variant="h6" fontWeight={700}>
+              Create Account
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ 
+            pt: 3, 
+            overflowY: 'auto',
+            '&::-webkit-scrollbar': { display: 'none' },
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none'
+          }}>
+            {/* Avatar Upload */}
+            <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" my={2}>
+              {avatar ? (
+                <Button
+                  variant="outlined"
+                  component="label"
+                  onMouseEnter={() => setIsAvatarHovered(true)}
+                  onMouseLeave={() => setIsAvatarHovered(false)}
+                  sx={{
+                    borderRadius: '50%',
+                    minWidth: 72,
+                    minHeight: 72,
+                    width: 72,
+                    height: 72,
+                    p: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    transition: 'background 0.2s',
+                    background: '#fff',
+                    '&:hover': {
+                      background: '#e0e0e0',
+                    },
+                    '& .MuiAvatar-root': {
+                      transition: 'filter 0.2s ease-in-out',
+                    },
+                    '&:hover .MuiAvatar-root': {
+                      filter: 'brightness(0.6)',
+                    },
+                  }}
+                >
+                  <Avatar src={avatar} sx={{ width: 72, height: 72 }} />
+                  {isAvatarHovered && (
+                    <Box sx={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}>
+                      <EditIcon sx={{ color: 'white', fontSize: 32 }} />
+                    </Box>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={e => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setCropImageSrc(reader.result);
+                          setCropDialogOpen(true);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </Button>
+              ) : (
+                <Button
+                  variant="outlined"
+                  component="label"
+                  onMouseEnter={() => setIsAvatarHovered(true)}
+                  onMouseLeave={() => setIsAvatarHovered(false)}
+                  sx={{
+                    borderRadius: '50%',
+                    minWidth: 72,
+                    minHeight: 72,
+                    width: 72,
+                    height: 72,
+                    p: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    transition: 'background 0.2s',
+                    background: '#fff',
+                    '&:hover': {
+                      background: '#e0e0e0',
+                    },
+                  }}
+                >
+                  {isAvatarHovered ? <EditIcon sx={{ fontSize: 32, color: '#555' }} /> : <CameraAltIcon sx={{ fontSize: 32, color: '#555' }} />}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={e => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setCropImageSrc(reader.result);
+                          setCropDialogOpen(true);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </Button>
+              )}
+            </Box>
+
+            <TextField label="Username" fullWidth margin="normal" value={username} onChange={e => setUsername(e.target.value)} />
+            <TextField label="Email" fullWidth margin="normal" value={email} onChange={e => setEmail(e.target.value)} />
+            <TextField label="Password" type="password" fullWidth margin="normal" value={password} onChange={e => setPassword(e.target.value)} />
+            
+            {/* Have an account? Login link */}
+            <Box sx={{ mt: 3, textAlign: 'center' }}>
+              <Typography variant="body1" color="textSecondary">
+                Have an account?{' '}
+                <Button 
+                  variant="text" 
+                  size="medium" 
+                  onClick={() => {
+                    setRegisterDialogOpen(false);
+                    setLoginDialogOpen(true);
+                  }}
+                  sx={{ 
+                    color: '#25d366',
+                    textTransform: 'none',
+                    p: 0.5,
+                    minWidth: 'auto',
+                    fontSize: '1rem',
+                    fontWeight: 500,
+                    '&:hover': { 
+                      bgcolor: 'transparent',
+                      textDecoration: 'underline'
+                    }
+                  }}
+                >
+                  Login
+                </Button>
+              </Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ p: 2, borderTop: `1px solid ${darkMode ? '#444' : '#e0e0e0'}` }}>
+            <Button 
+              onClick={() => setRegisterDialogOpen(false)}
+              sx={{ 
+                mr: 1,
+                color: '#25d366',
+                '&:hover': {
+                    backgroundColor: 'rgba(37, 211, 102, 0.1)'
+                  }
+                }} 
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                handleRegister();
+                setRegisterDialogOpen(false);
+              }}
+              variant="contained"
+              sx={{ 
+                bgcolor: '#25d366',
+                '&:hover': { bgcolor: '#1ea952' }
+              }}
+            >
+              Register
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Crop Dialog for register avatar */}
+        <Dialog open={cropDialogOpen} onClose={handleCropCancel} maxWidth="xs" fullWidth>
+          <DialogTitle>Crop Image</DialogTitle>
+          <DialogContent>
+            {cropImageSrc && (
+              <Box position="relative" width="100%" height={300} bgcolor="#333">
+                <Cropper
+                  image={cropImageSrc}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={1}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onCropComplete={onCropComplete}
+                />
+              </Box>
+            )}
+            <Slider
+              value={zoom}
+              min={1}
+              max={3}
+              step={0.1}
+              onChange={(e, z) => setZoom(z)}
+              sx={{ 
+                mt: 2,
+                color: '#25d366'
+              }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={handleCropCancel}
+              sx={{ 
+                color: '#25d366',
+                '&:hover': {
+                  backgroundColor: 'rgba(37, 211, 102, 0.1)'
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCropSave} 
+              variant="contained"
+              sx={{ 
+                bgcolor: '#25d366',
+                '&:hover': { bgcolor: '#1ea952' }
+              }}
+            >
+              Save
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </ThemeProvider>
     );
   }
 
@@ -3558,85 +3416,6 @@ function App() {
           </DialogActions>
         </Dialog>
       </Box>
-      {/* About Dialog */}
-      <Dialog 
-        open={aboutDialogOpen} 
-        onClose={() => setAboutDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{ 
-          sx: { 
-            bgcolor: darkMode ? '#222' : '#fff',
-            color: darkMode ? '#fff' : '#222'
-          } 
-        }}
-      >
-        <DialogTitle sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
-        }}>
-          <SocialXIcon size={32} color="#25d366" />
-          <Typography variant="h6" fontWeight={700}>
-            About Social X
-          </Typography>
-        </DialogTitle>
-        <DialogContent sx={{ pt: 3 }}>
-          <Typography variant="body1" paragraph>
-            Social X is a modern, real-time chat application built with React and Node.js. 
-            Connect with friends and family through instant messaging, voice messages, and file sharing.
-          </Typography>
-          <Typography variant="h6" sx={{ mt: 3, mb: 2, color: '#25d366' }}>
-            Features:
-          </Typography>
-          <Box component="ul" sx={{ pl: 2 }}>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <ChatIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Real-time messaging with typing indicators
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <MicIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Voice message recording and playback
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <AttachFileIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              File sharing (images, documents, audio, video)
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <DarkModeIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Dark/Light theme support
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PhoneIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Phone and email OTP verification
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <NotificationsIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              Push notifications
-            </Typography>
-            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <PersonIcon sx={{ fontSize: 20, color: '#25d366' }} />
-              User status and last seen
-            </Typography>
-          </Box>
-          <Typography variant="body2" sx={{ mt: 3, color: darkMode ? '#aaa' : '#666' }}>
-            Version 1.0.0 • Built with React, Node.js, Socket.io, and Material-UI
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2, borderTop: `1px solid ${darkMode ? '#444' : '#e0e0e0'}` }}>
-          <Button 
-            onClick={() => setAboutDialogOpen(false)}
-            variant="contained"
-            sx={{ 
-              bgcolor: '#25d366',
-              '&:hover': { bgcolor: '#1ea952' }
-            }}
-          >
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
     </ThemeProvider>
   );
 }
