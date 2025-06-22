@@ -23,6 +23,12 @@ import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import { useTheme } from '@mui/material/styles';
 
+const getFullUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `http://localhost:5000${url}`;
+};
+
 const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, nav, unreadChatsCount, onNotificationSettings }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -168,7 +174,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
         <Tooltip title="Profile" placement="right">
           <Box display="flex" alignItems="center" sx={{ width: expanded ? '100%' : 'auto', justifyContent: expanded ? 'flex-start' : 'center', mt: 2 }}>
             <IconButton onClick={handleAvatarClick} sx={{ p: 0, borderRadius: '50%' }}>
-              <Avatar src={user?.avatar} alt={user?.username} sx={{ width: 40, height: 40 }} />
+              <Avatar src={getFullUrl(user?.avatar)} alt={user?.username} sx={{ width: 40, height: 40 }} />
             </IconButton>
             {expanded && <Typography sx={{ color: darkMode ? '#fff' : 'inherit', ml: 1 }}>Profile</Typography>}
           </Box>
@@ -189,7 +195,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
             mt: -3,
           }}
         >
-          <Avatar src={user?.avatar} alt={user?.username} sx={{ width: 64, height: 64, mb: 1.5 }} />
+          <Avatar src={getFullUrl(user?.avatar)} alt={user?.username} sx={{ width: 64, height: 64, mb: 1.5 }} />
           <Typography fontWeight={600} variant="h6" align="center">{user?.username}</Typography>
           <Typography variant="body2" color="textSecondary" align="center">{user?.email}</Typography>
         </Box>

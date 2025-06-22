@@ -6,6 +6,12 @@ import Slider from '@mui/material/Slider';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
+const getFullUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `http://localhost:5000${url}`;
+};
+
 const EditProfileDialog = ({ open, onClose, user, onSave }) => {
   const [username, setUsername] = useState(user?.username || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -110,15 +116,23 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
     const croppedBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
     const formData = new FormData();
     formData.append('avatar', croppedBlob, 'avatar.jpg');
+    
+    // Get token from localStorage
+    const token = localStorage.getItem('token');
+    
     try {
       const res = await axios.post(`${API_URL}/auth/upload-avatar`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
+        },
       });
       const url = res.data.url.startsWith('/') ? BACKEND_URL + res.data.url : res.data.url;
       setAvatar(url);
       setTimeout(() => onSave({ username, email, avatar: url, about }), 0);
     } catch (err) {
-      alert('Failed to upload image');
+      console.error('Upload error:', err);
+      alert('Failed to upload image: ' + (err.response?.data?.message || err.message));
     }
     setCropDialogOpen(false);
     setCropImageSrc(null);
@@ -162,7 +176,7 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
           >
             <Avatar
               alt="User Avatar"
-              src={avatar}
+              src={getFullUrl(avatar)}
               sx={{ width: 100, height: 100, cursor: 'pointer', mb: 2, transition: 'filter 0.2s' }}
               style={avatarHover ? { filter: 'brightness(0.5)' } : {}}
             />
@@ -222,7 +236,7 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
             <ArrowBackIcon />
           </IconButton>
           <Box display="flex" justifyContent="center" alignItems="center" height="100vh" width="100vw">
-            <img src={avatar} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
+            <img src={getFullUrl(avatar)} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
           </Box>
         </Dialog>
         <Dialog open={cropDialogOpen} onClose={handleCropCancel} maxWidth="sm" fullWidth>

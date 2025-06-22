@@ -1599,9 +1599,11 @@ function App() {
 
   const handleProfileEdit = async (profile) => {
     try {
-      const res = await axios.put(`${API_URL}/auth/profile`, { id: user?.id, ...profile });
-      setUser(res.data);
-      localStorage.setItem('user', JSON.stringify(res.data));
+      const res = await axios.put(`${API_URL}/auth/profile`, { id: user?.id, ...profile }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUser(res.data.user);
+      localStorage.setItem('user', JSON.stringify(res.data.user));
       setError('Profile updated!');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update profile');

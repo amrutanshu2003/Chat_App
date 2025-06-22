@@ -213,4 +213,157 @@ router.get('/profile', async (req, res) => {
   }
 });
 
+// Update user profile
+router.put('/profile', upload.single('avatar'), async (req, res) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Access denied. No token provided.' 
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.userId);
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // Update user data
+    const { username, email } = req.body;
+    
+    if (username) {
+      // Check if username is already taken by another user
+      const existingUser = await User.findOne({ 
+        username, 
+        _id: { $ne: user._id } 
+      });
+      
+      if (existingUser) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Username is already taken' 
+        });
+      }
+      user.username = username;
+    }
+
+    if (email) {
+      // Check if email is already taken by another user
+      const existingUser = await User.findOne({ 
+        email, 
+        _id: { $ne: user._id } 
+      });
+      
+      if (existingUser) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Email is already taken' 
+        });
+      }
+      user.email = email;
+    }
+
+    // Handle avatar upload
+    if (req.file) {
+      // Delete old avatar file if it exists
+      if (user.avatar && user.avatar !== '/uploads/default-avatar.png') {
+        const fs = require('fs');
+        const oldAvatarPath = path.join(__dirname, '..', user.avatar);
+        if (fs.existsSync(oldAvatarPath)) {
+          fs.unlinkSync(oldAvatarPath);
+        }
+      }
+      
+      // Set new avatar path
+      user.avatar = `/uploads/${req.file.filename}`;
+    }
+
+    await user.save();
+
+    // Return updated user data (without password)
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        createdAt: user.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during profile update' 
+    });
+  }
+});
+
+// Upload avatar endpoint (separate from profile update)
+router.post('/upload-avatar', upload.single('avatar'), async (req, res) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Access denied. No token provided.' 
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No image file provided' 
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.userId);
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    // Delete old avatar file if it exists
+    if (user.avatar && user.avatar !== '/uploads/default-avatar.png') {
+      const fs = require('fs');
+      const oldAvatarPath = path.join(__dirname, '..', user.avatar);
+      if (fs.existsSync(oldAvatarPath)) {
+        fs.unlinkSync(oldAvatarPath);
+      }
+    }
+    
+    // Update user's avatar
+    user.avatar = `/uploads/${req.file.filename}`;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Avatar uploaded successfully',
+      url: user.avatar
+    });
+
+  } catch (error) {
+    console.error('Avatar upload error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during avatar upload' 
+    });
+  }
+});
+
 module.exports = router; 
