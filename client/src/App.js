@@ -66,6 +66,41 @@ const getFullUrl = (url) => {
   return `http://localhost:5000${url}`;
 };
 
+// Create a single notification audio instance to prevent conflicts
+let notificationAudio = null;
+let notificationTimeout = null;
+
+function playNotificationSound() {
+  try {
+    // Use a single audio instance to prevent conflicts
+    if (!notificationAudio) {
+      notificationAudio = new window.Audio('/notification.mp3');
+      notificationAudio.volume = 0.5; // Lower volume to be less intrusive
+    }
+    
+    // Clear any existing timeout
+    if (notificationTimeout) {
+      clearTimeout(notificationTimeout);
+    }
+    
+    // Reset and play
+    notificationAudio.currentTime = 0;
+    notificationAudio.play().then(() => {
+      // Automatically pause after 200ms
+      notificationTimeout = setTimeout(() => {
+        if (notificationAudio && !notificationAudio.paused) {
+          notificationAudio.pause();
+          notificationAudio.currentTime = 0;
+        }
+      }, 200);
+    }).catch(e => {
+      console.log('Notification sound play failed:', e);
+    });
+  } catch (e) {
+    console.log('Notification sound error:', e);
+  }
+}
+
 function App() {
   // Register service worker for push notifications
   useEffect(() => {
@@ -160,6 +195,14 @@ function App() {
       return {};
     }
   }); // { userId: lastMessage }
+  // Persist lastMessages to localStorage on every update
+  useEffect(() => {
+    try {
+      localStorage.setItem('lastMessages', JSON.stringify(lastMessages));
+    } catch (e) {
+      console.error('Failed to save lastMessages:', e);
+    }
+  }, [lastMessages]);
   // Ref for messages container
   const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -208,6 +251,10 @@ function App() {
   const [recordingTimer, setRecordingTimer] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
 
+  const [audioStates, setAudioStates] = useState({});
+  const audioRefs = useRef({});
+  const [currentlyPlayingAudio, setCurrentlyPlayingAudio] = useState(null);
+
   const handleSeek = (msgId, time) => {
     const audio = audioRefs.current[msgId];
     if (audio && Number.isFinite(time)) {
@@ -254,28 +301,43 @@ function App() {
     },
   });
 
-  const [audioStates, setAudioStates] = useState({});
-  const audioRefs = useRef({});
-
-  const handlePlayPause = (msgId) => {
+  const handlePlayPause = async (msgId) => {
     if (!user || !user.id) return;
-    Object.values(audioRefs.current).forEach(audio => {
-      if (audio.id !== msgId && !audio.paused) {
-        audio.pause();
-      }
-    });
-
+    
     const audio = audioRefs.current[msgId];
-    if (audio) {
-      if (audio.paused) {
-        audio.play();
-      } else {
+    if (!audio) return;
+
+    try {
+      // If this audio is currently playing, pause it
+      if (currentlyPlayingAudio === msgId) {
         audio.pause();
+        setCurrentlyPlayingAudio(null);
+        return;
       }
+
+      // Pause any currently playing audio
+      if (currentlyPlayingAudio && audioRefs.current[currentlyPlayingAudio]) {
+        const currentAudio = audioRefs.current[currentlyPlayingAudio];
+        if (!currentAudio.paused) {
+          currentAudio.pause();
+        }
+      }
+
+      // Add a small delay to prevent rapid play/pause calls
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // Play the new audio
+      await audio.play();
+      setCurrentlyPlayingAudio(msgId);
+    } catch (error) {
+      console.error('Audio play/pause error:', error);
+      setCurrentlyPlayingAudio(null);
     }
   };
 
   useEffect(() => {
+    const cleanupFunctions = [];
+
     messages.forEach(msg => {
       let fileData;
       try {
@@ -296,24 +358,45 @@ function App() {
                 duration: audio.duration,
               }
             }));
+
+            // Update global playing state
+            if (audio.paused && currentlyPlayingAudio === msg._id) {
+              setCurrentlyPlayingAudio(null);
+            } else if (!audio.paused && currentlyPlayingAudio !== msg._id) {
+              setCurrentlyPlayingAudio(msg._id);
+            }
           };
 
+          // Remove existing listeners first to prevent duplicates
+          audio.removeEventListener('play', updateState);
+          audio.removeEventListener('pause', updateState);
+          audio.removeEventListener('ended', updateState);
+          audio.removeEventListener('timeupdate', updateState);
+          audio.removeEventListener('loadedmetadata', updateState);
+
+          // Add new listeners
           audio.addEventListener('play', updateState);
           audio.addEventListener('pause', updateState);
           audio.addEventListener('ended', updateState);
           audio.addEventListener('timeupdate', updateState);
           audio.addEventListener('loadedmetadata', updateState);
 
-          return () => {
+          // Store cleanup function
+          cleanupFunctions.push(() => {
             audio.removeEventListener('play', updateState);
             audio.removeEventListener('pause', updateState);
             audio.removeEventListener('ended', updateState);
             audio.removeEventListener('timeupdate', updateState);
             audio.removeEventListener('loadedmetadata', updateState);
-          };
+          });
         }
       }
     });
+
+    // Return cleanup function
+    return () => {
+      cleanupFunctions.forEach(cleanup => cleanup());
+    };
   }, [messages]);
 
   // Save last selected chat to localStorage
@@ -357,6 +440,8 @@ function App() {
         });
         setLastMessages(prev => {
           if (!msg.sender) return prev;
+          // Allow socket messages to update lastMessages for all users
+          // The server fetch will override with fresh data when needed
           return { ...prev, [msg.sender]: msg };
         });
 
@@ -425,6 +510,7 @@ function App() {
           icon: '/logo192.png',
           silent: !notificationSettings.sound
         });
+        if (notificationSettings.sound) playNotificationSound();
       } else {
         // Fallback to browser notifications
         if ('Notification' in window && Notification.permission === 'granted') {
@@ -439,11 +525,16 @@ function App() {
             badge: '/logo192.png',
             silent: !notificationSettings.sound
           });
+          if (notificationSettings.sound) playNotificationSound();
         }
       }
     } catch (error) {
       console.error('Failed to show notification:', error);
     }
+
+    // In showMessageNotification and showGroupMessageNotification, after the notification is shown and if notificationSettings.sound is true, call playNotificationSound();
+    // Example:
+    // if (notificationSettings.sound) playNotificationSound();
   };
 
   // Function to show notification for new group messages
@@ -472,6 +563,7 @@ function App() {
           icon: '/logo192.png',
           silent: !notificationSettings.sound
         });
+        if (notificationSettings.sound) playNotificationSound();
       } else {
         // Fallback to browser notifications
         if ('Notification' in window && Notification.permission === 'granted') {
@@ -487,11 +579,16 @@ function App() {
             badge: '/logo192.png',
             silent: !notificationSettings.sound
           });
+          if (notificationSettings.sound) playNotificationSound();
         }
       }
     } catch (error) {
       console.error('Failed to show group notification:', error);
     }
+
+    // In showMessageNotification and showGroupMessageNotification, after the notification is shown and if notificationSettings.sound is true, call playNotificationSound();
+    // Example:
+    // if (notificationSettings.sound) playNotificationSound();
   };
 
   // Function to request notification permissions
@@ -553,7 +650,11 @@ function App() {
   };
 
   // Function to show notification for sent messages
-  const showSentMessageNotification = async (content, receiverId) => {
+  const showSentMessageNotification = async (content, senderId, receiverId) => {
+    // Prevent notification on sender's own device
+    if (user && (user.id === senderId || user._id === senderId)) {
+      return;
+    }
     console.log('=== SENT MESSAGE NOTIFICATION DEBUG ===');
     console.log('showSentMessageNotification called with:', { content, receiverId });
     console.log('Notification settings:', notificationSettings);
@@ -694,6 +795,7 @@ function App() {
             window.focus();
             notification.close();
           };
+          if (notificationSettings.sound) playNotificationSound();
         }
       }
     } catch (error) {
@@ -822,32 +924,60 @@ function App() {
     }
   }, [token]);
 
-  // Restore last selected chat from localStorage
+  // Clear lastSelectedChat from localStorage to prevent auto-opening last user
   useEffect(() => {
-    const lastChat = localStorage.getItem('lastSelectedChat');
-    if (lastChat && users.length > 0) {
-      try {
-        const { type, id } = JSON.parse(lastChat);
-        if (type === 'user') {
-          const userToSelect = users.find(u => u._id === id);
-          if (userToSelect) {
-            setSelectedUser(userToSelect);
-          }
-        }
-        // Note: Group restoration is not fully supported yet as groups are not fetched on startup.
-      } catch (e) {
-        console.error("Failed to restore last chat:", e);
-        localStorage.removeItem('lastSelectedChat');
-      }
+    localStorage.removeItem('lastSelectedChat');
+    // Removed localStorage.removeItem('lastMessages') to keep cache for instant opening
+  }, []);
+
+  // Clear lastMessages when selectedUser changes to ensure fresh data
+  useEffect(() => {
+    if (selectedUser) {
+      // Don't clear lastMessages here - keep cache for other users
+      // The fetch messages useEffect will handle fresh data loading
     }
-  }, [users]);
+  }, [selectedUser]);
+
+  // Ensure selectedUser's last message is immediately available in cache
+  useEffect(() => {
+    if (selectedUser && lastMessages[selectedUser._id]) {
+      // The last message is already in cache, so it will show immediately
+      // The fetch will update it with fresh data if needed
+    }
+  }, [selectedUser, lastMessages]);
 
   // Fetch messages when a user is selected
   useEffect(() => {
     if (token && selectedUser) {
+      // Fetch fresh messages from server
       axios.get(`${API_URL}/messages/${selectedUser._id}`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(res => setMessages(res.data))
-        .catch(() => setMessages([]));
+        .then(res => {
+          setMessages(res.data);
+          // Immediately update lastMessages with the actual last message from server
+          if (res.data.length > 0) {
+            const lastMessage = res.data[res.data.length - 1];
+            setLastMessages(prev => ({
+              ...prev,
+              [selectedUser._id]: lastMessage
+            }));
+          } else {
+            // If no messages, clear the last message for this user
+            setLastMessages(prev => {
+              const updated = { ...prev };
+              delete updated[selectedUser._id];
+              return updated;
+            });
+          }
+        })
+        .catch(() => {
+          setMessages([]);
+          // Clear last message on error
+          setLastMessages(prev => {
+            const updated = { ...prev };
+            delete updated[selectedUser._id];
+            return updated;
+          });
+        });
     }
   }, [token, selectedUser]);
 
@@ -1068,9 +1198,7 @@ function App() {
     setLastMessages(prev => {
       const updated = { ...prev };
       delete updated[selectedUser._id];
-      try {
-        localStorage.setItem('lastMessages', JSON.stringify(updated));
-      } catch {}
+      // Removed localStorage.setItem to prevent caching
       return updated;
     });
   };
@@ -1104,14 +1232,16 @@ function App() {
     if (!message.trim() || !selectedUser) return;
     console.log('handleSend called with message:', message, 'to user:', selectedUser._id);
     try {
-      await axios.post(`${API_URL}/messages`, { to: selectedUser._id, content: message }, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await axios.post(`${API_URL}/messages`, { to: selectedUser._id, content: message }, { headers: { Authorization: `Bearer ${token}` } });
+      const newMessage = response.data;
+      
       // Emit real-time
       if (socket && user?.id) socket.emit('sendMessage', { sender: user.id, receiver: selectedUser._id, content: message });
-      const newCreatedAt = new Date().toISOString();
-      setMessages((prev) => [...prev, { sender: user?.id, content: message, read: false, createdAt: newCreatedAt }]);
+      
+      setMessages((prev) => [...prev, newMessage]);
       setLastMessages(prev => {
         if (!selectedUser?._id) return prev;
-        return { ...prev, [selectedUser._id]: { content: message, createdAt: newCreatedAt } };
+        return { ...prev, [selectedUser._id]: newMessage };
       });
       setMessage('');
       setUnreadCounts(prev => {
@@ -1124,7 +1254,7 @@ function App() {
       
       // Show notification for sent message
       console.log('Calling showSentMessageNotification...');
-      showSentMessageNotification(message, selectedUser._id);
+      showSentMessageNotification(message, user.id, selectedUser._id);
     } catch (err) {
       if (err.response && err.response.status === 403) {
         setError('You cannot send messages to this user because you are blocked.');
@@ -1135,19 +1265,67 @@ function App() {
   };
 
   const handleLogout = () => {
-    if (socket && user?.id) {
-      socket.emit('userStatusChange', { userId: user.id, status: 'offline', lastSeen: new Date() });
-    }
     setToken('');
     setUser(null);
-    setUserStatusMap(prev => {
-      const newMap = { ...prev };
-      if (user?.id) delete newMap[user.id];
-      return newMap;
-    });
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setPage('login');
+    setSelectedUser(null);
+    setSelectedGroup(null);
+    setMessages([]);
+    setGroupMessages([]);
+    setLastMessages({});
+    setUnreadCounts({});
+    setPinned([]);
+    setStatuses([]);
+    setUserStatusMap({});
+    setProfileDialogOpen(false);
+    setProfileDialogUser(null);
+    setCallOpen(false);
+    setCallIncoming(false);
+    setCallAccepted(false);
+    setLocalStream(null);
+    setRemoteStream(null);
+    setPeerConnection(null);
+    setCallFrom(null);
+    setAudioOnly(false);
+    setNav('chats');
+    setSearch('');
+    setGroups([]);
+    setSelectedGroup(null);
+    setGroupMessages([]);
+    setGroupMessage('');
+    setGroupDialogOpen(false);
+    setGroupName('');
+    setGroupAvatar('');
+    setGroupMembers([]);
+    setGroupTypingUsers([]);
+    setIsBlocked(false);
+    setError('');
+    setMenuAnchorEl(null);
+    setClearChatDialogOpen(false);
+    setOpenImageDialog(false);
+    setDialogImageUrl('');
+    setImageZoom(1);
+    setAttachDrawerOpen(false);
+    setFileInputType('');
+    setAttachMenuAnchor(null);
+    setEmojiMenuAnchor(null);
+    setPdfViewerOpen(false);
+    setDocxViewerOpen(false);
+    setDocumentUrl('');
+    setAudioStates({});
+    setCurrentlyPlayingAudio(null);
+    try {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('lastMessages');
+      localStorage.removeItem('lastSelectedChat');
+      localStorage.removeItem('unreadCounts');
+      localStorage.removeItem('pinned');
+      localStorage.removeItem('statuses');
+      localStorage.removeItem('userStatusMap');
+      localStorage.removeItem('notificationSettings');
+    } catch (e) {
+      console.error('Failed to clear localStorage:', e);
+    }
   };
 
   const openGroupDialog = () => {
@@ -1273,7 +1451,7 @@ function App() {
     } catch {}
   }, [unreadCounts]);
 
-  // Persist lastMessages to localStorage whenever it changes
+  // Persist lastMessages to localStorage whenever it changes (restored for caching)
   useEffect(() => {
     try {
       localStorage.setItem('lastMessages', JSON.stringify(lastMessages));
@@ -1300,9 +1478,7 @@ function App() {
         setLastMessages(prev => {
           const updated = { ...prev };
           delete updated[from];
-          try {
-            localStorage.setItem('lastMessages', JSON.stringify(updated));
-          } catch {}
+          // Removed localStorage.setItem to prevent caching
           return updated;
         });
       }
@@ -1370,7 +1546,7 @@ function App() {
       
       // Show notification for sent file
       console.log('Calling showSentMessageNotification for file...');
-      showSentMessageNotification(JSON.stringify({ file: url, type, name }), selectedUser._id);
+      showSentMessageNotification(JSON.stringify({ file: url, type, name }), user.id, selectedUser._id);
     } catch (err) {
       setError('Failed to upload file.');
     }
@@ -2352,11 +2528,6 @@ function App() {
                                 />
                               ) : (
                                 <Box display="flex" alignItems="center" gap={1}>
-                                  <Avatar
-                                    src={getSenderInfo(msg.sender).avatar}
-                                    alt={getSenderInfo(msg.sender).username}
-                                    sx={{ width: 32, height: 32, mr: 1 }}
-                                  />
                                   <Box>
                                     {fileData.type === 'image' ? (
                                       <img
@@ -2764,9 +2935,7 @@ function App() {
               setLastMessages(prev => {
                 const updated = { ...prev };
                 delete updated[selectedUser._id];
-                try {
-                  localStorage.setItem('lastMessages', JSON.stringify(updated));
-                } catch {}
+                // Removed localStorage.setItem to prevent caching
                 return updated;
               });
               setClearChatDialogOpen(false);
@@ -2787,9 +2956,7 @@ function App() {
               setLastMessages(prev => {
                 const updated = { ...prev };
                 delete updated[selectedUser._id];
-                try {
-                  localStorage.setItem('lastMessages', JSON.stringify(updated));
-                } catch {}
+                // Removed localStorage.setItem to prevent caching
                 return updated;
               });
               setClearChatDialogOpen(false);
