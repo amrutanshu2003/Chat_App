@@ -54,6 +54,14 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import PauseIcon from '@mui/icons-material/Pause';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import AudioWaveform from './AudioWaveform'; // <-- Import the new component
+import WbSunnyIcon from '@mui/icons-material/WbSunny';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LoginIcon from '@mui/icons-material/Login';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import InfoIcon from '@mui/icons-material/Info';
+import ChatIcon from '@mui/icons-material/Chat';
+import PhoneIcon from '@mui/icons-material/Phone';
+import NotificationsIcon from '@mui/icons-material/Notifications';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
 
@@ -129,6 +137,21 @@ function App() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
+  const [canResend, setCanResend] = useState(true);
+  const [emailOtp, setEmailOtp] = useState('');
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [emailOtpVerified, setEmailOtpVerified] = useState(false);
+  const [emailOtpLoading, setEmailOtpLoading] = useState(false);
+  const [emailVerifyLoading, setEmailVerifyLoading] = useState(false);
+  const [emailResendTimer, setEmailResendTimer] = useState(0);
+  const [canEmailResend, setCanEmailResend] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')) || null);
   const [users, setUsers] = useState([]);
@@ -153,6 +176,8 @@ function App() {
     return stored ? JSON.parse(stored) : false;
   });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showLogin, setShowLogin] = useState(true);
   const [callOpen, setCallOpen] = useState(false);
   const [callIncoming, setCallIncoming] = useState(false);
   const [callAccepted, setCallAccepted] = useState(false);
@@ -303,7 +328,7 @@ function App() {
 
   const handlePlayPause = async (msgId) => {
     if (!user || !user.id) return;
-    
+
     const audio = audioRefs.current[msgId];
     if (!audio) return;
 
@@ -926,7 +951,7 @@ function App() {
 
   // Clear lastSelectedChat from localStorage to prevent auto-opening last user
   useEffect(() => {
-    localStorage.removeItem('lastSelectedChat');
+        localStorage.removeItem('lastSelectedChat');
     // Removed localStorage.removeItem('lastMessages') to keep cache for instant opening
   }, []);
 
@@ -1203,12 +1228,49 @@ function App() {
     });
   };
 
-  const handleRegister = async () => {
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    
+    if (!username.trim() || !email.trim() || !password.trim() || !phoneNumber.trim()) {
+      setError('All fields are required');
+      return;
+    }
+    
+    if (!otpVerified) {
+      setError('Please verify your phone number with OTP');
+      return;
+    }
+    
+    if (!emailOtpVerified) {
+      setError('Please verify your email with OTP');
+      return;
+    }
+    
+    setLoading(true);
     try {
-      await axios.post(`${API_URL}/auth/register`, { username, email, password, avatar });
-      setPage('login');
+      const formData = new FormData();
+      formData.append('username', username);
+      formData.append('email', email);
+      formData.append('password', password);
+      formData.append('phoneNumber', phoneNumber);
+      if (avatar) {
+        formData.append('avatar', avatar);
+      }
+      
+      const response = await axios.post(`${API_URL}/auth/register`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      setToken(response.data.token);
+      setUser(response.data.user);
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      setError('');
+      setShowLogin(false);
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1219,336 +1281,273 @@ function App() {
       setUser(res.data.user);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
-      setPage('chat');
-      
-      // Request notification permissions after successful login
       await requestNotificationPermission();
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     }
   };
 
-  const handleSend = async () => {
-    if (!message.trim() || !selectedUser) return;
-    console.log('handleSend called with message:', message, 'to user:', selectedUser._id);
+  const sendOTP = async () => {
+    if (!phoneNumber.trim()) {
+      setError('Please enter a valid phone number');
+      return;
+    }
+    
+    setOtpLoading(true);
     try {
-      const response = await axios.post(`${API_URL}/messages`, { to: selectedUser._id, content: message }, { headers: { Authorization: `Bearer ${token}` } });
-      const newMessage = response.data;
+      await axios.post(`${API_URL}/auth/send-otp`, { phoneNumber });
+      setOtpSent(true);
+      setError('');
       
-      // Emit real-time
-      if (socket && user?.id) socket.emit('sendMessage', { sender: user.id, receiver: selectedUser._id, content: message });
+      // Start resend timer (10 seconds)
+      setResendTimer(10);
+      setCanResend(false);
       
-      setMessages((prev) => [...prev, newMessage]);
-      setLastMessages(prev => {
-        if (!selectedUser?._id) return prev;
-        return { ...prev, [selectedUser._id]: newMessage };
-      });
-      setMessage('');
-      setUnreadCounts(prev => {
-        const updated = { ...prev, [selectedUser._id]: 0 };
-        try {
-          localStorage.setItem('unreadCounts', JSON.stringify(updated));
-        } catch {}
-        return updated;
-      });
+      const timer = setInterval(() => {
+        setResendTimer(prev => {
+          if (prev <= 1) {
+            setCanResend(true);
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
       
-      // Show notification for sent message
-      console.log('Calling showSentMessageNotification...');
-      showSentMessageNotification(message, user.id, selectedUser._id);
     } catch (err) {
-      if (err.response && err.response.status === 403) {
-        setError('You cannot send messages to this user because you are blocked.');
+      if (err.response?.status === 429) {
+        // Rate limiting error
+        setError(err.response.data.message);
+        // Extract remaining time from error message and set timer
+        const match = err.response.data.message.match(/(\d+) seconds/);
+        if (match) {
+          const remainingTime = parseInt(match[1]);
+          setResendTimer(remainingTime);
+          setCanResend(false);
+          
+          const timer = setInterval(() => {
+            setResendTimer(prev => {
+              if (prev <= 1) {
+                setCanResend(true);
+                clearInterval(timer);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
       } else {
-        setError('Failed to send message.');
+        setError(err.response?.data?.message || 'Failed to send OTP');
       }
+    } finally {
+      setOtpLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    setToken('');
-    setUser(null);
-    setSelectedUser(null);
-    setSelectedGroup(null);
-    setMessages([]);
-    setGroupMessages([]);
-    setLastMessages({});
-    setUnreadCounts({});
-    setPinned([]);
-    setStatuses([]);
-    setUserStatusMap({});
-    setProfileDialogOpen(false);
-    setProfileDialogUser(null);
-    setCallOpen(false);
-    setCallIncoming(false);
-    setCallAccepted(false);
-    setLocalStream(null);
-    setRemoteStream(null);
-    setPeerConnection(null);
-    setCallFrom(null);
-    setAudioOnly(false);
-    setNav('chats');
-    setSearch('');
-    setGroups([]);
-    setSelectedGroup(null);
-    setGroupMessages([]);
-    setGroupMessage('');
-    setGroupDialogOpen(false);
-    setGroupName('');
-    setGroupAvatar('');
-    setGroupMembers([]);
-    setGroupTypingUsers([]);
-    setIsBlocked(false);
-    setError('');
-    setMenuAnchorEl(null);
-    setClearChatDialogOpen(false);
-    setOpenImageDialog(false);
-    setDialogImageUrl('');
-    setImageZoom(1);
-    setAttachDrawerOpen(false);
-    setFileInputType('');
-    setAttachMenuAnchor(null);
-    setEmojiMenuAnchor(null);
-    setPdfViewerOpen(false);
-    setDocxViewerOpen(false);
-    setDocumentUrl('');
-    setAudioStates({});
-    setCurrentlyPlayingAudio(null);
-    try {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('lastMessages');
-      localStorage.removeItem('lastSelectedChat');
-      localStorage.removeItem('unreadCounts');
-      localStorage.removeItem('pinned');
-      localStorage.removeItem('statuses');
-      localStorage.removeItem('userStatusMap');
-      localStorage.removeItem('notificationSettings');
-    } catch (e) {
-      console.error('Failed to clear localStorage:', e);
+  const verifyOTP = async () => {
+    if (!otp.trim()) {
+      setError('Please enter the OTP');
+      return;
     }
-  };
-
-  const openGroupDialog = () => {
-    setGroupDialogOpen(true);
-  };
-
-  const handleProfileEdit = async (profile) => {
+    
+    setVerifyLoading(true);
     try {
-      const res = await axios.put(`${API_URL}/auth/profile`, { id: user?.id, ...profile });
-      setUser(res.data);
-      localStorage.setItem('user', JSON.stringify(res.data));
-      setError('Profile updated!');
+      await axios.post(`${API_URL}/auth/verify-otp`, { phoneNumber, otp });
+      setOtpVerified(true);
+      setError('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update profile');
+      setError(err.response?.data?.message || 'Invalid OTP');
+    } finally {
+      setVerifyLoading(false);
     }
   };
 
-  // Fetch latest user info before opening profile dialog
-  const handleOpenProfileDialog = async (userOrGroup) => {
-    if (userOrGroup && userOrGroup._id && !userOrGroup.members) {
-      // Fetch latest user info
-      try {
-        const res = await axios.get(`${API_URL}/messages/users/${userOrGroup._id}`, { headers: { Authorization: `Bearer ${token}` } });
-        setProfileDialogUser(res.data);
-      } catch {
-        setProfileDialogUser(userOrGroup);
-      }
-    } else {
-      setProfileDialogUser(userOrGroup);
+  const resendOTP = async () => {
+    if (!phoneNumber.trim()) {
+      setError('Please enter a valid phone number');
+      return;
     }
-    setProfileDialogOpen(true);
-  };
-
-  const handleFilterMenuOpen = (event) => setFilterMenuAnchor(event.currentTarget);
-  const handleFilterMenuClose = () => setFilterMenuAnchor(null);
-
-  // Helper for cropping
-  const onCropComplete = (croppedArea, croppedAreaPixels) => {
-    setCroppedAreaPixels(prev => {
-      // Only update if the value actually changes
-      if (!prev || prev.x !== croppedAreaPixels.x || prev.y !== croppedAreaPixels.y || prev.width !== croppedAreaPixels.width || prev.height !== croppedAreaPixels.height) {
-        return croppedAreaPixels;
-      }
-      return prev;
-    });
-  };
-
-  const getCroppedImg = async (imageSrc, cropPixels) => {
-    const image = new window.Image();
-    image.src = imageSrc;
-    await new Promise((resolve) => { image.onload = resolve; });
-    const canvas = document.createElement('canvas');
-    canvas.width = cropPixels.width;
-    canvas.height = cropPixels.height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(
-      image,
-      cropPixels.x,
-      cropPixels.y,
-      cropPixels.width,
-      cropPixels.height,
-      0,
-      0,
-      cropPixels.width,
-      cropPixels.height
-    );
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          resolve(reader.result);
-        };
-        reader.readAsDataURL(blob);
-      }, 'image/jpeg');
-    });
-  };
-
-  const handleCropSave = async () => {
+    
+    setOtpLoading(true);
     try {
-      if (!cropImageSrc || !croppedAreaPixels) return;
-      const croppedDataUrl = await getCroppedImg(cropImageSrc, croppedAreaPixels);
-      setAvatar(croppedDataUrl);
-      setCropDialogOpen(false);
-      setCropImageSrc(null);
-    } catch (err) {
-      setError('Failed to crop image');
-    }
-  };
-
-  const handleCropCancel = () => {
-    setCropDialogOpen(false);
-    setCropImageSrc(null);
-  };
-
-  useEffect(() => {
-    if (nav === 'status' && token) {
-      axios.get(`${API_URL}/status`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(res => setStatuses(res.data))
-        .catch(() => setStatuses([
-          { userId: '1', username: 'Alice', avatar: '', text: 'Enjoying the day!' },
-          { userId: '2', username: 'Bob', avatar: '', text: 'Working on a project.' }
-        ]));
-    }
-  }, [nav, token]);
-
-  // Fetch last seen for selectedUser if needed (chat header)
-  useEffect(() => {
-    if (selectedUser && getUserStatus(selectedUser).status !== 'online') {
-      fetchLastSeenIfNeeded(selectedUser);
-    }
-    // eslint-disable-next-line
-  }, [selectedUser]);
-
-  // Calculate unread chats count for sidebar badge
-  const unreadChatsCount = Object.entries(unreadCounts)
-    .filter(([userId, count]) => count > 0 && (!selectedUser || selectedUser._id !== userId))
-    .length;
-
-  // Persist unreadCounts to localStorage whenever it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('unreadCounts', JSON.stringify(unreadCounts));
-    } catch {}
-  }, [unreadCounts]);
-
-  // Persist lastMessages to localStorage whenever it changes (restored for caching)
-  useEffect(() => {
-    try {
-      localStorage.setItem('lastMessages', JSON.stringify(lastMessages));
-    } catch {}
-  }, [lastMessages]);
-
-  // Scroll to bottom of chat messages only (not the whole page)
-  useEffect(() => {
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-    }
-  }, [messages, selectedUser]);
-
-  useEffect(() => {
-    if (!socket) return;
-    const handleChatDeleted = ({ from }) => {
-      if (selectedUser && selectedUser._id === from) {
-        setMessages([]);
-        setUnreadCounts(prev => {
-          const updated = { ...prev, [from]: 0 };
-          try { localStorage.setItem('unreadCounts', JSON.stringify(updated)); } catch {}
-          return updated;
+      await axios.post(`${API_URL}/auth/send-otp`, { phoneNumber });
+      setOtpSent(true);
+      setError('');
+      
+      // Start resend timer (10 seconds)
+      setResendTimer(10);
+      setCanResend(false);
+      
+      const timer = setInterval(() => {
+        setResendTimer(prev => {
+          if (prev <= 1) {
+            setCanResend(true);
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
         });
-        setLastMessages(prev => {
-          const updated = { ...prev };
-          delete updated[from];
-          // Removed localStorage.setItem to prevent caching
-          return updated;
-        });
-      }
-    };
-    socket.on('chatDeletedForEveryone', handleChatDeleted);
-    return () => {
-      socket.off('chatDeletedForEveryone', handleChatDeleted);
-    };
-  }, [socket, selectedUser]);
-
-  // Fetch block status when opening a chat
-  useEffect(() => {
-    const fetchBlockStatus = async () => {
-      if (!selectedUser || !token) return setIsBlocked(false);
-      try {
-        const res = await axios.get(`${API_URL}/messages/is-blocked/${selectedUser._id}`, { headers: { Authorization: `Bearer ${token}` } });
-        setIsBlocked(res.data.isBlocked);
-      } catch {
-        setIsBlocked(false);
-      }
-    };
-    fetchBlockStatus();
-  }, [selectedUser, token]);
-
-  useEffect(() => {
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
-  }, [darkMode]);
-
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !selectedUser) return;
-    console.log('handleFileChange called with file:', file.name, 'to user:', selectedUser._id);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const uploadRes = await axios.post(`${API_URL}/messages/upload`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      // Send a message with the file info
-      const { url, type, name } = uploadRes.data;
-      const messageResponse = await axios.post(`${API_URL}/messages`, {
-        to: selectedUser._id,
-        content: JSON.stringify({ file: url, type, name }),
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      }, 1000);
       
-      const returnedMessage = messageResponse.data;
-
-      if (socket && user?.id) socket.emit('sendMessage', returnedMessage);
-
-      setMessages((prev) => [...prev, returnedMessage]);
-      
-      setLastMessages(prev => {
-        if (!selectedUser?._id) return prev;
-        return { ...prev, [selectedUser._id]: returnedMessage };
-      });
-      
-      setUnreadCounts(prev => {
-        const updated = { ...prev, [selectedUser._id]: 0 };
-        try { localStorage.setItem('unreadCounts', JSON.stringify(updated)); } catch {}
-        return updated;
-      });
-      
-      // Show notification for sent file
-      console.log('Calling showSentMessageNotification for file...');
-      showSentMessageNotification(JSON.stringify({ file: url, type, name }), user.id, selectedUser._id);
     } catch (err) {
-      setError('Failed to upload file.');
+      if (err.response?.status === 429) {
+        // Rate limiting error
+        setError(err.response.data.message);
+        // Extract remaining time from error message and set timer
+        const match = err.response.data.message.match(/(\d+) seconds/);
+        if (match) {
+          const remainingTime = parseInt(match[1]);
+          setResendTimer(remainingTime);
+          setCanResend(false);
+          
+          const timer = setInterval(() => {
+            setResendTimer(prev => {
+              if (prev <= 1) {
+                setCanResend(true);
+                clearInterval(timer);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+      } else {
+        setError(err.response?.data?.message || 'Failed to send OTP');
+      }
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const sendEmailOTP = async () => {
+    if (!email.trim()) {
+      setError('Please enter a valid email address');
+      return;
+    }
+    
+    setEmailOtpLoading(true);
+    try {
+      await axios.post(`${API_URL}/auth/send-email-otp`, { email });
+      setEmailOtpSent(true);
+      setError('');
+      
+      // Start resend timer (10 seconds)
+      setEmailResendTimer(10);
+      setCanEmailResend(false);
+      
+      const timer = setInterval(() => {
+        setEmailResendTimer(prev => {
+          if (prev <= 1) {
+            setCanEmailResend(true);
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+    } catch (err) {
+      if (err.response?.status === 429) {
+        // Rate limiting error
+        setError(err.response.data.message);
+        // Extract remaining time from error message and set timer
+        const match = err.response.data.message.match(/(\d+) seconds/);
+        if (match) {
+          const remainingTime = parseInt(match[1]);
+          setEmailResendTimer(remainingTime);
+          setCanEmailResend(false);
+          
+          const timer = setInterval(() => {
+            setEmailResendTimer(prev => {
+              if (prev <= 1) {
+                setCanEmailResend(true);
+                clearInterval(timer);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+      } else {
+        setError(err.response?.data?.message || 'Failed to send email OTP');
+      }
+    } finally {
+      setEmailOtpLoading(false);
+    }
+  };
+
+  const verifyEmailOTP = async () => {
+    if (!emailOtp.trim()) {
+      setError('Please enter the email OTP');
+      return;
+    }
+    
+    setEmailVerifyLoading(true);
+    try {
+      await axios.post(`${API_URL}/auth/verify-email-otp`, { email, otp: emailOtp });
+      setEmailOtpVerified(true);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Invalid email OTP');
+    } finally {
+      setEmailVerifyLoading(false);
+    }
+  };
+
+  const resendEmailOTP = async () => {
+    if (!email.trim()) {
+      setError('Please enter a valid email address');
+      return;
+    }
+    
+    setEmailOtpLoading(true);
+    try {
+      await axios.post(`${API_URL}/auth/send-email-otp`, { email });
+      setEmailOtpSent(true);
+      setError('');
+      
+      // Start resend timer (10 seconds)
+      setEmailResendTimer(10);
+      setCanEmailResend(false);
+      
+      const timer = setInterval(() => {
+        setEmailResendTimer(prev => {
+          if (prev <= 1) {
+            setCanEmailResend(true);
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
+    } catch (err) {
+      if (err.response?.status === 429) {
+        // Rate limiting error
+        setError(err.response.data.message);
+        // Extract remaining time from error message and set timer
+        const match = err.response.data.message.match(/(\d+) seconds/);
+        if (match) {
+          const remainingTime = parseInt(match[1]);
+          setEmailResendTimer(remainingTime);
+          setCanEmailResend(false);
+          
+          const timer = setInterval(() => {
+            setEmailResendTimer(prev => {
+              if (prev <= 1) {
+                setCanEmailResend(true);
+                clearInterval(timer);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+      } else {
+        setError(err.response?.data?.message || 'Failed to send email OTP');
+      }
+    } finally {
+      setEmailOtpLoading(false);
     }
   };
 
@@ -1774,11 +1773,331 @@ function App() {
     return { avatar: found?.avatar || user.avatar, username: found?.username || user.username };
   }
 
+  const handleLogout = () => {
+    setToken('');
+    setUser(null);
+    setSelectedUser(null);
+    setSelectedGroup(null);
+    setMessages([]);
+    setGroupMessages([]);
+    setLastMessages({});
+    setUnreadCounts({});
+    setPinned([]);
+    setStatuses([]);
+    setUserStatusMap({});
+    setProfileDialogOpen(false);
+    setProfileDialogUser(null);
+    setCallOpen(false);
+    setCallIncoming(false);
+    setCallAccepted(false);
+    setLocalStream(null);
+    setRemoteStream(null);
+    setPeerConnection(null);
+    setCallFrom(null);
+    setAudioOnly(false);
+    setNav('chats');
+    setSearch('');
+    setGroups([]);
+    setSelectedGroup(null);
+    setGroupMessages([]);
+    setGroupMessage('');
+    setGroupDialogOpen(false);
+    setGroupName('');
+    setGroupAvatar('');
+    setGroupMembers([]);
+    setGroupTypingUsers([]);
+    setIsBlocked(false);
+    setError('');
+    setMenuAnchorEl(null);
+    setClearChatDialogOpen(false);
+    setOpenImageDialog(false);
+    setDialogImageUrl('');
+    setImageZoom(1);
+    setAttachDrawerOpen(false);
+    setFileInputType('');
+    setAttachMenuAnchor(null);
+    setEmojiMenuAnchor(null);
+    setPdfViewerOpen(false);
+    setDocxViewerOpen(false);
+    setDocumentUrl('');
+    setAudioStates({});
+    setCurrentlyPlayingAudio(null);
+    try {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('lastMessages');
+      localStorage.removeItem('lastSelectedChat');
+      localStorage.removeItem('unreadCounts');
+      localStorage.removeItem('pinned');
+      localStorage.removeItem('statuses');
+      localStorage.removeItem('userStatusMap');
+      localStorage.removeItem('notificationSettings');
+    } catch (e) {
+      console.error('Failed to clear localStorage:', e);
+    }
+  };
+
+  const handleProfileEdit = async (profile) => {
+    try {
+      const res = await axios.put(`${API_URL}/auth/profile`, { id: user?.id, ...profile });
+      setUser(res.data);
+      localStorage.setItem('user', JSON.stringify(res.data));
+      setError('Profile updated!');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update profile');
+    }
+  };
+
+  const handleOpenProfileDialog = async (userOrGroup) => {
+    if (userOrGroup && userOrGroup._id && !userOrGroup.members) {
+      // Fetch latest user info
+      try {
+        const res = await axios.get(`${API_URL}/messages/users/${userOrGroup._id}`, { headers: { Authorization: `Bearer ${token}` } });
+        setProfileDialogUser(res.data);
+      } catch {
+        setProfileDialogUser(userOrGroup);
+      }
+    } else {
+      setProfileDialogUser(userOrGroup);
+    }
+    setProfileDialogOpen(true);
+  };
+
+  const handleFilterMenuOpen = (event) => setFilterMenuAnchor(event.currentTarget);
+  const handleFilterMenuClose = () => setFilterMenuAnchor(null);
+
+  const onCropComplete = (croppedArea, croppedAreaPixels) => {
+    setCroppedAreaPixels(prev => {
+      // Only update if the value actually changes
+      if (!prev || prev.x !== croppedAreaPixels.x || prev.y !== croppedAreaPixels.y || prev.width !== croppedAreaPixels.width || prev.height !== croppedAreaPixels.height) {
+        return croppedAreaPixels;
+      }
+      return prev;
+    });
+  };
+
+  const getCroppedImg = async (imageSrc, cropPixels) => {
+    const image = new window.Image();
+    image.src = imageSrc;
+    await new Promise((resolve) => { image.onload = resolve; });
+    const canvas = document.createElement('canvas');
+    canvas.width = cropPixels.width;
+    canvas.height = cropPixels.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(
+      image,
+      cropPixels.x,
+      cropPixels.y,
+      cropPixels.width,
+      cropPixels.height,
+      0,
+      0,
+      cropPixels.width,
+      cropPixels.height
+    );
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve(reader.result);
+        };
+        reader.readAsDataURL(blob);
+      }, 'image/jpeg');
+    });
+  };
+
+  const handleCropSave = async () => {
+    try {
+      if (!cropImageSrc || !croppedAreaPixels) return;
+      const croppedDataUrl = await getCroppedImg(cropImageSrc, croppedAreaPixels);
+      setAvatar(croppedDataUrl);
+      setCropDialogOpen(false);
+      setCropImageSrc(null);
+    } catch (err) {
+      setError('Failed to crop image');
+    }
+  };
+
+  const handleCropCancel = () => {
+    setCropDialogOpen(false);
+    setCropImageSrc(null);
+  };
+
+  const handleSend = async () => {
+    if (!message.trim() || !selectedUser) return;
+    console.log('handleSend called with message:', message, 'to user:', selectedUser._id);
+    try {
+      const response = await axios.post(`${API_URL}/messages`, { to: selectedUser._id, content: message }, { headers: { Authorization: `Bearer ${token}` } });
+      const newMessage = response.data;
+      
+      // Emit real-time
+      if (socket && user?.id) socket.emit('sendMessage', { sender: user.id, receiver: selectedUser._id, content: message });
+      
+      setMessages((prev) => [...prev, newMessage]);
+      setLastMessages(prev => {
+        if (!selectedUser?._id) return prev;
+        return { ...prev, [selectedUser._id]: newMessage };
+      });
+      setMessage('');
+      setUnreadCounts(prev => {
+        const updated = { ...prev, [selectedUser._id]: 0 };
+        try {
+          localStorage.setItem('unreadCounts', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+      
+      // Show notification for sent message
+      console.log('Calling showSentMessageNotification...');
+      showSentMessageNotification(message, user.id, selectedUser._id);
+    } catch (err) {
+      if (err.response && err.response.status === 403) {
+        setError('You cannot send messages to this user because you are blocked.');
+      } else {
+        setError('Failed to send message.');
+      }
+    }
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !selectedUser) return;
+    console.log('handleFileChange called with file:', file.name, 'to user:', selectedUser._id);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const uploadRes = await axios.post(`${API_URL}/messages/upload`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      // Send a message with the file info
+      const { url, type, name } = uploadRes.data;
+      const messageResponse = await axios.post(`${API_URL}/messages`, {
+        to: selectedUser._id,
+        content: JSON.stringify({ file: url, type, name }),
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      
+      const returnedMessage = messageResponse.data;
+
+      if (socket && user?.id) socket.emit('sendMessage', returnedMessage);
+
+      setMessages((prev) => [...prev, returnedMessage]);
+      
+      setLastMessages(prev => {
+        if (!selectedUser?._id) return prev;
+        return { ...prev, [selectedUser._id]: returnedMessage };
+      });
+      
+      setUnreadCounts(prev => {
+        const updated = { ...prev, [selectedUser._id]: 0 };
+        try { localStorage.setItem('unreadCounts', JSON.stringify(updated)); } catch {}
+        return updated;
+      });
+      
+      // Show notification for sent file
+      console.log('Calling showSentMessageNotification for file...');
+      showSentMessageNotification(JSON.stringify({ file: url, type, name }), user.id, selectedUser._id);
+    } catch (err) {
+      setError('Failed to upload file.');
+    }
+  };
+
+  // Calculate unread chats count for sidebar badge
+  const unreadChatsCount = Object.entries(unreadCounts)
+    .filter(([userId, count]) => count > 0 && (!selectedUser || selectedUser._id !== userId))
+    .length;
+
+  // Place this with other hooks at the top of App()
+  const [navMenuAnchor, setNavMenuAnchor] = useState(null);
+  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
+  const handleNavMenuOpen = (e) => setNavMenuAnchor(e.currentTarget);
+  const handleNavMenuClose = () => setNavMenuAnchor(null);
+
   if (!token || !user) {
     return (
       <ThemeProvider theme={theme}>
+        {/* Top Navbar for Login/Register */}
+        <Box width="100vw" position="fixed" top={0} left={0}
+          sx={{
+            height: 56,
+            display: 'flex',
+            alignItems: 'center',
+            boxShadow: darkMode ? 4 : 2,
+            borderRadius: 0,
+            bgcolor: darkMode ? '#000' : '#f5f5f5',
+            zIndex: 1201,
+            transition: 'background 0.2s',
+          }}
+        >
+          {/* Social X Icon and Text */}
+          <Box display="flex" alignItems="center" gap={1} ml={2}>
+            <SocialXIcon size={32} color="#25d366" />
+            <Typography variant="h6" fontWeight={700} color={darkMode ? '#fff' : '#000'} sx={{ pl: 1, letterSpacing: 1 }}>
+              Social X
+            </Typography>
+          </Box>
+          {/* About Link */}
+          <Box flex={1} />
+          <IconButton
+            sx={{ color: darkMode ? '#fff' : '#222', mr: 1 }}
+            onClick={() => setAboutDialogOpen(true)}
+          >
+            <InfoIcon />
+          </IconButton>
+          {/* Theme Toggle */}
+          <IconButton onClick={() => {
+            setDarkMode((prev) => {
+              localStorage.setItem('darkMode', JSON.stringify(!prev));
+              return !prev;
+            });
+          }} sx={{ color: darkMode ? '#fff' : '#222', mr: 1 }}>
+            {darkMode ? <WbSunnyIcon /> : <DarkModeIcon />}
+          </IconButton>
+          {/* 3-dot Menu */}
+          <IconButton onClick={handleNavMenuOpen} sx={{ color: darkMode ? '#fff' : '#222', mr: 2 }}>
+            <MoreVertIcon />
+          </IconButton>
+          <Menu
+            anchorEl={navMenuAnchor}
+            open={Boolean(navMenuAnchor)}
+            onClose={handleNavMenuClose}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+            PaperProps={{ sx: { minWidth: 180, borderRadius: 2, boxShadow: 3, bgcolor: darkMode ? '#222' : '#fff' } }}
+          >
+            <MenuItem onClick={() => { setPage('login'); handleNavMenuClose(); }} sx={{ gap: 1 }}>
+              <LoginIcon sx={{ color: darkMode ? '#fff' : '#1976d2' }} />
+              Login
+            </MenuItem>
+            <MenuItem onClick={() => { setPage('register'); handleNavMenuClose(); }} sx={{ gap: 1 }}>
+              <PersonAddIcon sx={{ color: darkMode ? '#fff' : '#1976d2' }} />
+              Sign Up
+            </MenuItem>
+          </Menu>
+        </Box>
+        {/* Main Content */}
+        <Box minHeight="100vh" width="100vw" bgcolor={darkMode ? '#000' : '#e9eaf0'} sx={{ pt: 7, transition: 'background 0.2s' }}>
         <Container maxWidth="xs">
-          <Box mt={8} p={4} component={Paper}>
+            <Box mt={4} p={4} component={Paper} sx={{
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              bgcolor: darkMode ? '#111' : '#fff',
+              color: darkMode ? '#fff' : '#222',
+              boxShadow: darkMode ? 4 : 2,
+              borderRadius: 3,
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+              '&::-webkit-scrollbar': { display: 'none' }
+            }}>
+              {/* Social X Icon and Text */}
+              <Box display="flex" alignItems="center" justifyContent="center" mb={3}>
+                <SocialXIcon size={48} color="#25d366" />
+                <Typography variant="h4" fontWeight={700} color={darkMode ? '#fff' : '#000'} sx={{ ml: 2, letterSpacing: 1 }}>
+                  Social X
+                </Typography>
+              </Box>
             <Typography variant="h5" align="center" gutterBottom>
               {page === 'login' ? 'Login' : 'Register'}
             </Typography>
@@ -1904,6 +2223,145 @@ function App() {
                 <TextField label="Username" fullWidth margin="normal" value={username} onChange={e => setUsername(e.target.value)} />
                 <TextField label="Email" fullWidth margin="normal" value={email} onChange={e => setEmail(e.target.value)} />
                 <TextField label="Password" type="password" fullWidth margin="normal" value={password} onChange={e => setPassword(e.target.value)} />
+                  
+                  {/* Phone Number and OTP Section */}
+                  <TextField 
+                    label="Phone Number" 
+                    fullWidth 
+                    margin="normal" 
+                    value={phoneNumber} 
+                    onChange={e => setPhoneNumber(e.target.value)}
+                    placeholder="+1234567890"
+                  />
+                  
+                  {!otpSent ? (
+                    <Button 
+                      variant="outlined" 
+                      fullWidth 
+                      sx={{ mt: 1 }} 
+                      onClick={sendOTP}
+                      disabled={otpLoading || !phoneNumber.trim()}
+                    >
+                      {otpLoading ? 'Sending OTP...' : 'Send OTP'}
+                    </Button>
+                  ) : (
+                    <Box sx={{ mt: 2 }}>
+                      <TextField 
+                        label="Enter OTP" 
+                        fullWidth 
+                        margin="normal" 
+                        value={otp} 
+                        onChange={e => setOtp(e.target.value)}
+                        placeholder="Enter 6-digit OTP"
+                        disabled={otpVerified}
+                      />
+                      {!otpVerified ? (
+                        <div className="otp-buttons">
+                          <button 
+                            type="button" 
+                            onClick={verifyOTP} 
+                            disabled={verifyLoading || !otp.trim()}
+                            className="verify-otp-btn"
+                          >
+                            {verifyLoading ? 'Verifying...' : 'Verify OTP'}
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={resendOTP} 
+                            disabled={!canResend || otpLoading}
+                            className="resend-otp-btn"
+                          >
+                            {otpLoading ? 'Sending...' : 
+                             canResend ? 'Resend OTP' : 
+                             `Resend in ${resendTimer}s`}
+                          </button>
+                        </div>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, p: 1, bgcolor: 'success.light', borderRadius: 1 }}>
+                          <Typography variant="body2" color="success.contrastText">
+                            ✓ Phone number verified
+                          </Typography>
+                        </Box>
+                      )}
+                      <Button 
+                        variant="text" 
+                        size="small" 
+                        sx={{ mt: 1 }} 
+                        onClick={() => {
+                          setOtpSent(false);
+                          setOtpVerified(false);
+                          setOtp('');
+                        }}
+                      >
+                        Change Phone Number
+                      </Button>
+                    </Box>
+                  )}
+                  
+                  {/* Email OTP Section */}
+                  {!emailOtpSent ? (
+                    <Button 
+                      variant="outlined" 
+                      fullWidth 
+                      sx={{ mt: 2 }} 
+                      onClick={sendEmailOTP}
+                      disabled={emailOtpLoading || !email.trim()}
+                    >
+                      {emailOtpLoading ? 'Sending Email OTP...' : 'Send Email OTP'}
+                    </Button>
+                  ) : (
+                    <Box sx={{ mt: 2 }}>
+                      <TextField 
+                        label="Enter Email OTP" 
+                        fullWidth 
+                        margin="normal" 
+                        value={emailOtp} 
+                        onChange={e => setEmailOtp(e.target.value)}
+                        placeholder="Enter 6-digit Email OTP"
+                        disabled={emailOtpVerified}
+                      />
+                      {!emailOtpVerified ? (
+                        <div className="otp-buttons">
+                          <button 
+                            type="button" 
+                            onClick={verifyEmailOTP} 
+                            disabled={emailVerifyLoading || !emailOtp.trim()}
+                            className="verify-otp-btn"
+                          >
+                            {emailVerifyLoading ? 'Verifying...' : 'Verify Email OTP'}
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={resendEmailOTP} 
+                            disabled={!canEmailResend || emailOtpLoading}
+                            className="resend-otp-btn"
+                          >
+                            {emailOtpLoading ? 'Sending...' : 
+                             canEmailResend ? 'Resend Email OTP' : 
+                             `Resend in ${emailResendTimer}s`}
+                          </button>
+                        </div>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, p: 1, bgcolor: 'success.light', borderRadius: 1 }}>
+                          <Typography variant="body2" color="success.contrastText">
+                            ✓ Email verified
+                          </Typography>
+                        </Box>
+                      )}
+                      <Button 
+                        variant="text" 
+                        size="small" 
+                        sx={{ mt: 1 }} 
+                        onClick={() => {
+                          setEmailOtpSent(false);
+                          setEmailOtpVerified(false);
+                          setEmailOtp('');
+                        }}
+                      >
+                        Change Email
+                      </Button>
+                    </Box>
+                  )}
               </>
             )}
             {page === 'login' && (
@@ -1915,7 +2373,18 @@ function App() {
             <Button variant="contained" color="primary" fullWidth sx={{ mt: 2 }} onClick={page === 'login' ? handleLogin : handleRegister}>
               {page === 'login' ? 'Login' : 'Register'}
             </Button>
-            <Button color="secondary" fullWidth sx={{ mt: 1 }} onClick={() => setPage(page === 'login' ? 'register' : 'login')}>
+              <Button color="secondary" fullWidth sx={{ mt: 1 }} onClick={() => {
+                setPage(page === 'login' ? 'register' : 'login');
+                // Reset OTP state when switching pages
+                setOtpSent(false);
+                setOtpVerified(false);
+                setOtp('');
+                setPhoneNumber('');
+                setEmailOtpSent(false);
+                setEmailOtpVerified(false);
+                setEmailOtp('');
+                setError('');
+              }}>
               {page === 'login' ? 'No account? Register' : 'Have an account? Login'}
             </Button>
           </Box>
@@ -1925,7 +2394,87 @@ function App() {
             </Box>
           )}
         </Container>
-      </ThemeProvider>
+      </Box>
+      {/* About Dialog */}
+      <Dialog 
+        open={aboutDialogOpen} 
+        onClose={() => setAboutDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ 
+          sx: { 
+            bgcolor: darkMode ? '#222' : '#fff',
+            color: darkMode ? '#fff' : '#222'
+          } 
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 2,
+          borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
+        }}>
+          <SocialXIcon size={32} color="#25d366" />
+          <Typography variant="h6" fontWeight={700}>
+            About Social X
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body1" paragraph>
+            Social X is a modern, real-time chat application built with React and Node.js. 
+            Connect with friends and family through instant messaging, voice messages, and file sharing.
+          </Typography>
+          <Typography variant="h6" sx={{ mt: 3, mb: 2, color: '#25d366' }}>
+            Features:
+          </Typography>
+          <Box component="ul" sx={{ pl: 2 }}>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ChatIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Real-time messaging with typing indicators
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <MicIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Voice message recording and playback
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AttachFileIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              File sharing (images, documents, audio, video)
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <DarkModeIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Dark/Light theme support
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PhoneIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Phone and email OTP verification
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <NotificationsIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Push notifications
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PersonIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              User status and last seen
+            </Typography>
+          </Box>
+          <Typography variant="body2" sx={{ mt: 3, color: darkMode ? '#aaa' : '#666' }}>
+            Version 1.0.0 • Built with React, Node.js, Socket.io, and Material-UI
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: `1px solid ${darkMode ? '#444' : '#e0e0e0'}` }}>
+          <Button 
+            onClick={() => setAboutDialogOpen(false)}
+            variant="contained"
+            sx={{ 
+              bgcolor: '#25d366',
+              '&:hover': { bgcolor: '#1ea952' }
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </ThemeProvider>
     );
   }
 
@@ -3009,6 +3558,85 @@ function App() {
           </DialogActions>
         </Dialog>
       </Box>
+      {/* About Dialog */}
+      <Dialog 
+        open={aboutDialogOpen} 
+        onClose={() => setAboutDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ 
+          sx: { 
+            bgcolor: darkMode ? '#222' : '#fff',
+            color: darkMode ? '#fff' : '#222'
+          } 
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 2,
+          borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
+        }}>
+          <SocialXIcon size={32} color="#25d366" />
+          <Typography variant="h6" fontWeight={700}>
+            About Social X
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Typography variant="body1" paragraph>
+            Social X is a modern, real-time chat application built with React and Node.js. 
+            Connect with friends and family through instant messaging, voice messages, and file sharing.
+          </Typography>
+          <Typography variant="h6" sx={{ mt: 3, mb: 2, color: '#25d366' }}>
+            Features:
+          </Typography>
+          <Box component="ul" sx={{ pl: 2 }}>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ChatIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Real-time messaging with typing indicators
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <MicIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Voice message recording and playback
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AttachFileIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              File sharing (images, documents, audio, video)
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <DarkModeIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Dark/Light theme support
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PhoneIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Phone and email OTP verification
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <NotificationsIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              Push notifications
+            </Typography>
+            <Typography component="li" variant="body2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <PersonIcon sx={{ fontSize: 20, color: '#25d366' }} />
+              User status and last seen
+            </Typography>
+          </Box>
+          <Typography variant="body2" sx={{ mt: 3, color: darkMode ? '#aaa' : '#666' }}>
+            Version 1.0.0 • Built with React, Node.js, Socket.io, and Material-UI
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: `1px solid ${darkMode ? '#444' : '#e0e0e0'}` }}>
+          <Button 
+            onClick={() => setAboutDialogOpen(false)}
+            variant="contained"
+            sx={{ 
+              bgcolor: '#25d366',
+              '&:hover': { bgcolor: '#1ea952' }
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </ThemeProvider>
   );
 }
