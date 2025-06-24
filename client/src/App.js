@@ -65,6 +65,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import EditIcon from '@mui/icons-material/Edit';
 import { startAuthentication } from '@simplewebauthn/browser';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import LockScreen from './LockScreen';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
@@ -2117,8 +2118,9 @@ function App() {
 
   // In App function, add state for appLockUnlocked
   const [appLockUnlocked, setAppLockUnlocked] = useState(() => !localStorage.getItem('applock_pin'));
-  if (!appLockUnlocked) {
-    return <AppLockScreen onUnlock={() => setAppLockUnlocked(true)} />;
+  const [isLocked, setIsLocked] = useState(true); // App lock state
+  if (isLocked) {
+    return <LockScreen onUnlock={() => setIsLocked(false)} />;
   }
 
   if (!token || !user) {
