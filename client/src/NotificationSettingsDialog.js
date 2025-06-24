@@ -53,7 +53,14 @@ const NotificationSettingsDialog = ({ open, onClose, settings, onSave }) => {
               <Switch
                 checked={localSettings.enabled}
                 onChange={(e) => handleSettingChange('enabled', e.target.checked)}
-                color="primary"
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: '#25d366',
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: '#25d366',
+                  },
+                }}
               />
             }
             label={
@@ -76,7 +83,14 @@ const NotificationSettingsDialog = ({ open, onClose, settings, onSave }) => {
               <Switch
                 checked={localSettings.sound}
                 onChange={(e) => handleSettingChange('sound', e.target.checked)}
-                color="primary"
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: '#25d366',
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: '#25d366',
+                  },
+                }}
                 disabled={!localSettings.enabled}
               />
             }
@@ -100,7 +114,14 @@ const NotificationSettingsDialog = ({ open, onClose, settings, onSave }) => {
               <Switch
                 checked={localSettings.showPreview}
                 onChange={(e) => handleSettingChange('showPreview', e.target.checked)}
-                color="primary"
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: '#25d366',
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: '#25d366',
+                  },
+                }}
                 disabled={!localSettings.enabled}
               />
             }
@@ -124,7 +145,14 @@ const NotificationSettingsDialog = ({ open, onClose, settings, onSave }) => {
               <Switch
                 checked={localSettings.sentMessageNotifications}
                 onChange={(e) => handleSettingChange('sentMessageNotifications', e.target.checked)}
-                color="primary"
+                sx={{
+                  '& .MuiSwitch-switchBase.Mui-checked': {
+                    color: '#25d366',
+                  },
+                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                    backgroundColor: '#25d366',
+                  },
+                }}
                 disabled={!localSettings.enabled}
               />
             }
@@ -141,8 +169,8 @@ const NotificationSettingsDialog = ({ open, onClose, settings, onSave }) => {
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleCancel}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained">
+        <Button onClick={handleCancel} sx={{ color: '#25d366' }}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained" sx={{ bgcolor: '#25d366', '&:hover': { bgcolor: '#1ea952' } }}>
           Save
         </Button>
       </DialogActions>

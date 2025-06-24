@@ -637,7 +637,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           {passwordSuccess && <Typography color="success.main">{passwordSuccess}</Typography>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setChangePasswordDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setChangePasswordDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
           <Button
             variant="contained"
             sx={{ backgroundColor: '#25d366', color: '#fff' }}

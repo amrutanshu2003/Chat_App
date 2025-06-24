@@ -7,6 +7,13 @@ import CloseIcon from '@mui/icons-material/Close';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
+// Helper to get full URL for avatar
+const getFullUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `http://localhost:5000${url}`;
+};
+
 const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus, fetchLastSeenIfNeeded }) => {
   const [showImageDialog, setShowImageDialog] = useState(false);
 
@@ -34,7 +41,7 @@ const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus,
         </Box>
         <Box display="flex" flexDirection="column" alignItems="center" mb={2}>
           <Box position="relative" display="inline-block" mb={2}>
-            <Avatar src={user.avatar} sx={{ width: 80, height: 80, cursor: 'pointer' }} onClick={() => setShowImageDialog(true)} />
+            <Avatar src={getFullUrl(user.avatar)} sx={{ width: 80, height: 80, cursor: 'pointer' }} onClick={() => setShowImageDialog(true)} />
             {getUserStatus && getUserStatus(user).status === 'online' && (
               <Box position="absolute" bottom={6} right={6} width={8} height={8} bgcolor="#25d366" borderRadius="50%" border="2px solid #fff" />
             )}
@@ -56,7 +63,7 @@ const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus,
                 <InfoOutlinedIcon fontSize="small" sx={{ mr: 1 }} />
                 <Typography variant="subtitle2" color="textSecondary">About</Typography>
               </Box>
-              <Typography variant="body2" color="primary" align="left" sx={{ width: '100%', wordBreak: 'break-word', whiteSpace: 'pre-line' }}>{user.about || ''}</Typography>
+              <Typography variant="body2" align="left" sx={{ width: '100%', wordBreak: 'break-word', whiteSpace: 'pre-line', color: '#fff' }}>{user.about || ''}</Typography>
             </Box>
           )}
         </Box>
@@ -93,7 +100,9 @@ const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus,
           <ArrowBackIcon />
         </IconButton>
         <Box display="flex" justifyContent="center" alignItems="center" height="100vh" width="100vw">
-          <img src={user.avatar} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
+          <img src={getFullUrl(user.avatar)} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} 
+            onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+          />
         </Box>
       </Dialog>
     </Drawer>
