@@ -5,7 +5,6 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
-const User = require('./models/User');
 require('dotenv').config();
 
 // Set default environment variables if not provided
@@ -89,28 +88,5 @@ app.get('/api/protected', (req, res) => {
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.log('MongoDB connection error:', err));
-
-// Background job: Permanently delete users scheduled for deletion
-setInterval(async () => {
-  try {
-    const now = new Date();
-    const usersToDelete = await User.find({ deletionScheduled: true, deletionDate: { $lte: now } });
-    for (const user of usersToDelete) {
-      // Delete avatar file if it exists
-      if (user.avatar && user.avatar !== '/uploads/default-avatar.png') {
-        const fs = require('fs');
-        const path = require('path');
-        const avatarPath = path.join(__dirname, user.avatar);
-        if (fs.existsSync(avatarPath)) {
-          fs.unlinkSync(avatarPath);
-        }
-      }
-      await User.deleteOne({ _id: user._id });
-      console.log(`Permanently deleted user ${user._id}`);
-    }
-  } catch (err) {
-    console.error('Error in scheduled account deletion job:', err);
-  }
-}, 60 * 60 * 1000); // Run every hour
 
 server.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));

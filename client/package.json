@@ -19,7 +19,6 @@
     "https-browserify": "^1.0.0",
     "nodemailer": "^7.0.3",
     "process": "^0.11.10",
-    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-easy-crop": "^4.7.4",

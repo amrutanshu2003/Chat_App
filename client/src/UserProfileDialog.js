@@ -93,11 +93,7 @@ const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus,
           <ArrowBackIcon />
         </IconButton>
         <Box display="flex" justifyContent="center" alignItems="center" height="100vh" width="100vw">
-          {user.avatar ? (
-            <img src={user.avatar} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
-          ) : (
-            <Typography variant="h5" color="#fff">No profile photo</Typography>
-          )}
+          <img src={user.avatar} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
         </Box>
       </Dialog>
     </Drawer>

@@ -143,6 +143,8 @@ function App() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [avatarFile, setAvatarFile] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   // Safe JSON parse for user
   function getStoredUser() {
@@ -1288,25 +1290,35 @@ function App() {
   const handleRegister = async (e) => {
     if (e) e.preventDefault();
     setError('');
-    if (username.length < 3) {
-      setError('Username must be at least 3 characters long.');
+    setLoading(true);
+
+    if (!username || !email || !password || !confirmPassword) {
+      setError('All fields are required.');
+      setLoading(false);
       return;
     }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('username', username);
       formData.append('email', email);
       formData.append('password', password);
-      
-      // Handle avatar if it's a data URL
-      if (avatar && avatar.startsWith('data:')) {
-        // Convert data URL to file object
-        const response = await fetch(avatar);
-        const blob = await response.blob();
-        const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' });
-        formData.append('avatar', file);
+      if (avatarFile) {
+        formData.append('avatar', avatarFile);
       }
-      
+
       const res = await axios.post(`${API_URL}/auth/register`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -1316,8 +1328,6 @@ function App() {
       setUser(res.data.user);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
-      // Immediately require 2FA setup
-      // await startForce2FASetup(res.data.token); // REMOVE THIS LINE
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
       console.error(err);
@@ -1327,36 +1337,26 @@ function App() {
   const handleLogin = async () => {
     try {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password });
-      // If account is scheduled for deletion, show dialog first
-      if (res.data.deletionScheduled) {
-        setDeletionDialogOpen(true);
-        setDeletionDate(res.data.deletionDate || '');
-        setDeletionEmail(email);
-        setDeletionPassword(password);
-        setDeletionDialogError('');
-        setPendingLoginResponse(res.data); // Store for after cancellation
-        return;
-      }
       setToken(res.data.token);
       setUser(res.data.user);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
       await requestNotificationPermission();
     } catch (err) {
-      const msg = err.response?.data?.message || 'Login failed';
-      const status = err.response?.status;
-      console.log('Login error:', msg, 'Status:', status);
-      if (status === 403 && msg.toLowerCase().includes('deletion')) {
-        setDeletionDialogOpen(true);
-        setDeletionDate(msg.match(/deletion on (.+?)\./)?.[1] || '');
-        setDeletionEmail(email);
-        setDeletionPassword(password);
-        setDeletionDialogError('');
-        setPendingLoginResponse(null); // No login response, must retry after cancel
-      } else {
-        setError(msg);
-      }
+      setError(err.response?.data?.message || 'Login failed');
     }
+  };
+
+  const handleChoose2FA = () => {
+    // 2FA functionality removed
+  };
+
+  const handleChoosePasskey = async () => {
+    // Passkey functionality removed
+  };
+
+  const handleVerify2FALogin = async () => {
+    // 2FA verification functionality removed
   };
 
   const handleDownload = async () => {
@@ -1730,10 +1730,14 @@ function App() {
   const getCroppedImg = async (imageSrc, cropPixels) => {
     const image = new Image();
     image.src = imageSrc;
+    // Wait for the image to load before drawing
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+    });
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
 
-    const { width, height } = image;
     canvas.width = cropPixels.width;
     canvas.height = cropPixels.height;
 
@@ -1764,7 +1768,9 @@ function App() {
   const handleCropSave = async () => {
     try {
       const croppedImageBlob = await getCroppedImg(cropImageSrc, croppedAreaPixels);
-      await handleProfileEdit(user, croppedImageBlob);
+      const croppedImageFile = new File([croppedImageBlob], "avatar.jpg", { type: "image/jpeg" });
+      setAvatarFile(croppedImageFile);
+      setAvatar(URL.createObjectURL(croppedImageFile)); // for preview
       setCropDialogOpen(false);
     } catch (e) {
       console.error(e);
@@ -1923,19 +1929,6 @@ function App() {
   const [pendingAuthUserId, setPendingAuthUserId] = useState('');
   const [pendingAuthEmail, setPendingAuthEmail] = useState('');
   const [authMethodError, setAuthMethodError] = useState('');
-  const [authSecretCode, setAuthSecretCode] = useState('');
-  const [authSecretCodeError, setAuthSecretCodeError] = useState('');
-
-  const [deletionDialogOpen, setDeletionDialogOpen] = useState(false);
-  const [deletionDate, setDeletionDate] = useState('');
-  const [deletionEmail, setDeletionEmail] = useState('');
-  const [deletionPassword, setDeletionPassword] = useState('');
-  const [deletionDialogError, setDeletionDialogError] = useState('');
-  const [pendingLoginResponse, setPendingLoginResponse] = useState(null);
-
-  
-                   
-                  
 
   if (!token || !user) {
     return (
@@ -2202,6 +2195,13 @@ function App() {
                   variant="text" 
                   size="medium" 
                   onClick={() => {
+                    setUsername('');
+                    setEmail('');
+                    setPassword('');
+                    setConfirmPassword('');
+                    setAvatar('');
+                    setAvatarFile(null);
+                    setError('');
                     setLoginDialogOpen(false);
                     setRegisterDialogOpen(true);
                   }}
@@ -2389,6 +2389,7 @@ function App() {
             <TextField label="Username" fullWidth margin="normal" value={username} onChange={e => setUsername(e.target.value)} />
             <TextField label="Email" fullWidth margin="normal" value={email} onChange={e => setEmail(e.target.value)} />
             <TextField label="Password" type="password" fullWidth margin="normal" value={password} onChange={e => setPassword(e.target.value)} />
+            <TextField label="Confirm Password" type="password" fullWidth margin="normal" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onPaste={() => {}} />
             
             {/* Have an account? Login link */}
             <Box sx={{ mt: 3, textAlign: 'center' }}>
@@ -2398,6 +2399,13 @@ function App() {
                   variant="text" 
                   size="medium" 
                   onClick={() => {
+                    setUsername('');
+                    setEmail('');
+                    setPassword('');
+                    setConfirmPassword('');
+                    setAvatar('');
+                    setAvatarFile(null);
+                    setError('');
                     setRegisterDialogOpen(false);
                     setLoginDialogOpen(true);
                   }}
@@ -2433,9 +2441,14 @@ function App() {
               Cancel
             </Button>
             <Button 
-              onClick={() => {
-                handleRegister();
-                setRegisterDialogOpen(false);
+              onClick={async () => {
+                const prevToken = token;
+                const prevUser = user;
+                await handleRegister();
+                // Only close dialog if registration was successful (token and user are set)
+                if (token !== prevToken && user !== prevUser) {
+                  setRegisterDialogOpen(false);
+                }
               }}
               variant="contained"
               sx={{ 
@@ -2528,7 +2541,7 @@ function App() {
               </>
             ) : (
               <>
-                <Typography sx={{ mb: 2 }}>Enter the reset token sent to your email and your new password.</Typography>
+                <Typography sx={{ mb: 2 }}>Enter the reset token (demo) and your new password.</Typography>
                 <TextField
                   label="Reset Token"
                   value={forgotToken}
@@ -2575,86 +2588,16 @@ function App() {
           <DialogTitle>Choose Authentication Method</DialogTitle>
           <DialogContent>
             <Typography sx={{ mb: 2 }}>How would you like to authenticate?</Typography>
-            <TextField
-              label="Secret Code"
-              type="password"
-              value={authSecretCode}
-              onChange={e => setAuthSecretCode(e.target.value)}
-              fullWidth
-              margin="normal"
-              inputProps={{ maxLength: 32 }}
-            />
-            {authSecretCodeError && <Typography color="error" sx={{ mt: 1 }}>{authSecretCodeError}</Typography>}
-            {user?.twoFactorEnabled && (
-              <>
-                <TextField
-                  label="Secret Code"
-                  type="password"
-                  value={authSecretCode}
-                  onChange={e => setAuthSecretCode(e.target.value)}
-                  fullWidth
-                  margin="normal"
-                  inputProps={{ maxLength: 32 }}
-                />
-                {authSecretCodeError && <Typography color="error" sx={{ mt: 1 }}>{authSecretCodeError}</Typography>}
-              </>
-            )}
-            <Button onClick={async () => {
-              if (user?.twoFactorEnabled) {
-                setAuthSecretCodeError('');
-                if (!authSecretCode || authSecretCode.length < 4 || !/^[a-zA-Z0-9]+$/.test(authSecretCode)) {
-                  setAuthSecretCodeError('Secret code must be at least 4 alphanumeric characters.');
-                  return;
-                }
-                // Optionally, verify secret code with backend here if needed
-              }
-              setAuthMethodDialogOpen(false);
-            }} variant="outlined" fullWidth sx={{ mb: 2, color: '#25d366', borderColor: '#25d366' }}>
+            <Button onClick={handleChoose2FA} variant="outlined" fullWidth sx={{ mb: 2, color: '#25d366', borderColor: '#25d366' }}>
               Use Authenticator App (2FA)
+            </Button>
+            <Button onClick={handleChoosePasskey} variant="contained" fullWidth sx={{ backgroundColor: '#25d366', color: '#fff' }}>
+              Use Passkey (Device)
             </Button>
             {authMethodError && <Typography color="error" sx={{ mt: 2 }}>{authMethodError}</Typography>}
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setAuthMethodDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
-          </DialogActions>
-        </Dialog>
-        <Dialog open={deletionDialogOpen} onClose={() => setDeletionDialogOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle>Account Scheduled for Deletion</DialogTitle>
-          <DialogContent>
-            <Typography sx={{ mb: 2 }}>Your account is scheduled for deletion on {deletionDate}.<br/>Do you want to keep your account?</Typography>
-            {deletionDialogError && <Typography color="error" sx={{ mt: 2 }}>{deletionDialogError}</Typography>}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setDeletionDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
-            <Button
-              onClick={async () => {
-                setDeletionDialogError('');
-                try {
-                  const res = await axios.post(`${API_URL}/auth/cancel-deletion`, { email: deletionEmail, password: deletionPassword });
-                  if (res.data.success) {
-                    setDeletionDialogOpen(false);
-                    // If there was a pending login response, proceed to 2FA if needed
-                    if (pendingLoginResponse && pendingLoginResponse.twoFactorRequired) {
-                      setPendingAuthUserId(pendingLoginResponse.userId);
-                      setPendingAuthEmail(deletionEmail);
-                      setAuthMethodDialogOpen(true);
-                      setAuthMethodError('');
-                    } else {
-                      // Otherwise, retry login
-                      setTimeout(() => handleLogin(), 500);
-                    }
-                  } else {
-                    setDeletionDialogError(res.data.message || 'Failed to cancel deletion.');
-                  }
-                } catch (err) {
-                  setDeletionDialogError(err.response?.data?.message || 'Failed to cancel deletion.');
-                }
-              }}
-              variant="contained"
-              sx={{ backgroundColor: '#25d366', color: '#fff' }}
-            >
-              Keep Account
-            </Button>
           </DialogActions>
         </Dialog>
       </ThemeProvider>

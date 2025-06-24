@@ -1,32 +1,33 @@
-import React, { useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import Avatar from '@mui/material/Avatar';
 
-const AudioWaveform = forwardRef(({ audioSrc, profileImg, profileName = '', duration = 0, isPlaying = false, currentTime = 0, onPlayPause, onSeek }, ref) => {
+const AudioMessage = ({ audioSrc, profileImg, profileName = '', duration = 0 }) => {
   const audioRef = useRef(null);
-
-  // Expose the audio element to parent component
-  useImperativeHandle(ref, () => audioRef.current);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    
-    const updateTime = () => {
-      if (onSeek) onSeek(audio.currentTime);
-    };
-    
+    const updateTime = () => setCurrentTime(audio.currentTime);
     audio.addEventListener('timeupdate', updateTime);
-    audio.addEventListener('ended', () => {
-      if (onPlayPause) onPlayPause();
-    });
-    
+    audio.addEventListener('ended', () => setIsPlaying(false));
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
-      audio.removeEventListener('ended', () => {
-        if (onPlayPause) onPlayPause();
-      });
+      audio.removeEventListener('ended', () => setIsPlaying(false));
     };
-  }, [onSeek, onPlayPause]);
+  }, []);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
 
   // Generate fake waveform data for demo
   const waveform = Array(40).fill(0).map(() => Math.random());
@@ -43,7 +44,7 @@ const AudioWaveform = forwardRef(({ audioSrc, profileImg, profileName = '', dura
       color: '#fff',
       fontFamily: 'sans-serif',
     }}>
-      <button onClick={onPlayPause} style={{
+      <button onClick={togglePlay} style={{
         background: 'none',
         border: 'none',
         color: '#fff',
@@ -60,7 +61,7 @@ const AudioWaveform = forwardRef(({ audioSrc, profileImg, profileName = '', dura
       </span>
     </div>
   );
-});
+};
 
 function formatTime(sec) {
   if (!sec) return '0:00';
@@ -69,4 +70,4 @@ function formatTime(sec) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default AudioWaveform; 
+export default AudioMessage; 

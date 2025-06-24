@@ -4,7 +4,6 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
 const User = require('../models/User');
-const QRCode = require('qrcode');
 const crypto = require('crypto');
 
 const router = express.Router();
@@ -38,6 +37,12 @@ const upload = multer({
 // In-memory store for reset tokens (for demo; use DB/Redis in production)
 const resetTokens = {};
 
+// Password validation helper
+function isPasswordStrong(password) {
+  // At least one uppercase, one special character, and min 8 chars
+  return /[A-Z]/.test(password) && /[^A-Za-z0-9]/.test(password) && password.length >= 8;
+}
+
 // Register new user
 router.post('/register', upload.single('avatar'), async (req, res) => {
   try {
@@ -55,6 +60,14 @@ router.post('/register', upload.single('avatar'), async (req, res) => {
       return res.status(400).json({ 
         success: false, 
         message: 'Please provide username, email, and password' 
+      });
+    }
+
+    // Password strength check
+    if (!isPasswordStrong(password)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters, contain an uppercase letter and a special character.'
       });
     }
 
@@ -152,16 +165,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Check if account is scheduled for deletion
-    if (user.deletionScheduled) {
-      return res.status(200).json({
-        success: false,
-        deletionScheduled: true,
-        deletionDate: user.deletionDate?.toLocaleString() || '',
-        message: `Account is scheduled for deletion on ${user.deletionDate?.toLocaleString() || ''}. If this is a mistake, contact support.`
-      });
-    }
-
     // Generate JWT token
     const token = jwt.sign(
       { userId: user._id },
@@ -189,50 +192,6 @@ router.post('/login', async (req, res) => {
       success: false, 
       message: 'Server error during login' 
     });
-  }
-});
-
-// Verify 2FA code for login
-router.post('/verify-2fa-login', async (req, res) => {
-  try {
-    const { userId, code } = req.body;
-    if (!userId || !code) {
-      return res.status(400).json({ success: false, message: 'User ID and 2FA code are required.' });
-    }
-    const user = await User.findById(userId);
-    if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
-      return res.status(400).json({ success: false, message: '2FA not enabled for this user.' });
-    }
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
-      encoding: 'base32',
-      token: code,
-      window: 1
-    });
-    if (!verified) {
-      return res.status(400).json({ success: false, message: 'Invalid 2FA code.' });
-    }
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-    res.json({
-      success: true,
-      message: 'Login successful',
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        avatar: user.avatar,
-        createdAt: user.createdAt
-      }
-    });
-  } catch (error) {
-    console.error('2FA login error:', error);
-    res.status(500).json({ success: false, message: 'Server error during 2FA login.' });
   }
 });
 
@@ -441,6 +400,13 @@ router.post('/change-password', async (req, res) => {
     if (!oldPassword || !newPassword) {
       return res.status(400).json({ success: false, message: 'Both old and new passwords are required.' });
     }
+    // Password strength check
+    if (!isPasswordStrong(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters, contain an uppercase letter and a special character.'
+      });
+    }
     const isMatch = await bcrypt.compare(oldPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
@@ -455,75 +421,6 @@ router.post('/change-password', async (req, res) => {
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ success: false, message: 'Server error during password change.' });
-  }
-});
-
-// Enable 2FA: generate secret and QR code
-router.post('/enable-2fa', async (req, res) => {
-  try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    if (user.twoFactorEnabled) return res.status(400).json({ success: false, message: '2FA already enabled.' });
-    // Generate secret
-    const secret = speakeasy.generateSecret({ name: `ChatApp (${user.email})` });
-    // Save secret temp (not enabled yet)
-    user.twoFactorSecret = secret.base32;
-    await user.save();
-    // Generate QR code
-    QRCode.toDataURL(secret.otpauth_url, (err, data_url) => {
-      if (err) return res.status(500).json({ success: false, message: 'Failed to generate QR code.' });
-      res.json({ success: true, qr: data_url, secret: secret.base32 });
-    });
-  } catch (error) {
-    console.error('Enable 2FA error:', error);
-    res.status(500).json({ success: false, message: 'Server error during 2FA setup.' });
-  }
-});
-
-// Verify 2FA code and enable 2FA
-router.post('/verify-2fa', async (req, res) => {
-  try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    const { code } = req.body;
-    if (!user.twoFactorSecret) return res.status(400).json({ success: false, message: '2FA not initialized.' });
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
-      encoding: 'base32',
-      token: code,
-      window: 1
-    });
-    if (!verified) return res.status(400).json({ success: false, message: 'Invalid 2FA code.' });
-    user.twoFactorEnabled = true;
-    await user.save();
-    res.json({ success: true, message: '2FA enabled successfully.' });
-  } catch (error) {
-    console.error('Verify 2FA error:', error);
-    res.status(500).json({ success: false, message: 'Server error during 2FA verification.' });
-  }
-});
-
-// Disable 2FA
-router.post('/disable-2fa', async (req, res) => {
-  try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    user.twoFactorEnabled = false;
-    user.twoFactorSecret = '';
-    await user.save();
-    res.json({ success: true, message: '2FA disabled.' });
-  } catch (error) {
-    console.error('Disable 2FA error:', error);
-    res.status(500).json({ success: false, message: 'Server error during 2FA disable.' });
   }
 });
 
@@ -549,6 +446,13 @@ router.post('/reset-password', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) return res.status(400).json({ success: false, message: 'Token and new password are required.' });
+    // Password strength check
+    if (!isPasswordStrong(newPassword)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters, contain an uppercase letter and a special character.'
+      });
+    }
     const data = resetTokens[token];
     if (!data || data.expires < Date.now()) return res.status(400).json({ success: false, message: 'Invalid or expired token.' });
     const user = await User.findById(data.userId);
@@ -564,7 +468,7 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// Delete account endpoint (schedule deletion)
+// Delete account endpoint
 router.delete('/delete-account', async (req, res) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -572,34 +476,20 @@ router.delete('/delete-account', async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    // Schedule deletion for 7 days from now
-    user.deletionScheduled = true;
-    user.deletionDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await user.save();
-    res.json({ success: true, message: `Account scheduled for deletion on ${user.deletionDate.toLocaleString()}.` });
+    // Delete avatar file if it exists
+    if (user.avatar && user.avatar !== '/uploads/default-avatar.png') {
+      const fs = require('fs');
+      const path = require('path');
+      const avatarPath = path.join(__dirname, '..', user.avatar);
+      if (fs.existsSync(avatarPath)) {
+        fs.unlinkSync(avatarPath);
+      }
+    }
+    await User.deleteOne({ _id: user._id });
+    res.json({ success: true, message: 'Account deleted successfully.' });
   } catch (error) {
     console.error('Delete account error:', error);
     res.status(500).json({ success: false, message: 'Server error during account deletion.' });
-  }
-});
-
-// Cancel scheduled account deletion
-router.post('/cancel-deletion', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password are required.' });
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
-    if (!user.deletionScheduled) return res.status(400).json({ success: false, message: 'Account is not scheduled for deletion.' });
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) return res.status(400).json({ success: false, message: 'Invalid password.' });
-    user.deletionScheduled = false;
-    user.deletionDate = null;
-    await user.save();
-    res.json({ success: true, message: 'Account deletion cancelled. You can now log in.' });
-  } catch (error) {
-    console.error('Cancel deletion error:', error);
-    res.status(500).json({ success: false, message: 'Server error during cancellation.' });
   }
 });
 

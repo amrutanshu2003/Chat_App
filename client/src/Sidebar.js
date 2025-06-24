@@ -60,10 +60,20 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [twoFAStatus, setTwoFAStatus] = useState(user?.twoFactorEnabled || false);
+  const [twoFAQROpen, setTwoFAQROpen] = useState(false);
+  const [twoFAQr, setTwoFAQr] = useState('');
+  const [twoFASecret, setTwoFASecret] = useState('');
+  const [twoFACode, setTwoFACode] = useState('');
+  const [twoFAError, setTwoFAError] = useState('');
+  const [twoFALoading, setTwoFALoading] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  const [deleteSuccess, setDeleteSuccess] = useState('');
+
+  useEffect(() => {
+    setTwoFAStatus(user?.twoFactorEnabled || false);
+  }, [user]);
 
   const handleAvatarClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -118,6 +128,78 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
 
   const handleChangePassword = () => {
     setChangePasswordDialogOpen(true);
+  };
+
+  const handleEnable2FA = async () => {
+    setTwoFAError('');
+    setTwoFALoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/auth/enable-2fa', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTwoFAError(data.message || 'Failed to start 2FA.');
+        if (data.message && data.message.toLowerCase().includes('already enabled')) {
+          setTwoFAStatus(true);
+          setTwoFAQROpen(false);
+        }
+      } else {
+        setTwoFAQr(data.qr);
+        setTwoFASecret(data.secret);
+        setTwoFAQROpen(true);
+      }
+    } catch (err) {
+      setTwoFAError('Server error. Please try again.');
+    }
+    setTwoFALoading(false);
+  };
+
+  const handleVerify2FA = async () => {
+    setTwoFAError('');
+    setTwoFALoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/auth/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ code: twoFACode })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTwoFAError(data.message || 'Invalid code.');
+      } else {
+        setTwoFAStatus(true);
+        setTwoFAQROpen(false);
+        setTwoFACode('');
+      }
+    } catch (err) {
+      setTwoFAError('Server error. Please try again.');
+    }
+    setTwoFALoading(false);
+  };
+
+  const handleDisable2FA = async () => {
+    setTwoFAError('');
+    setTwoFALoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/auth/disable-2fa', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTwoFAError(data.message || 'Failed to disable 2FA.');
+      } else {
+        setTwoFAStatus(false);
+      }
+    } catch (err) {
+      setTwoFAError('Server error. Please try again.');
+    }
+    setTwoFALoading(false);
   };
 
   return (
@@ -473,6 +555,52 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           <Typography variant="body2" sx={{ alignSelf: 'flex-start', mb: 1 }}>
             Password last changed: 10 days ago
           </Typography>
+          {twoFAStatus ? (
+            <Button
+              variant="outlined"
+              fullWidth
+              sx={{ color: '#f44336', borderColor: '#f44336', fontWeight: 600, mb: 2 }}
+              onClick={handleDisable2FA}
+              disabled={twoFALoading}
+            >
+              Disable Two-Factor Authentication
+            </Button>
+          ) : (
+            <Button
+              variant="text"
+              fullWidth
+              sx={{ color: '#25d366', backgroundColor: 'rgba(37,211,102,0.08)', fontWeight: 600, mb: 2 }}
+              onClick={handleEnable2FA}
+              disabled={twoFALoading}
+            >
+              {twoFALoading ? <CircularProgress size={20} sx={{ color: '#25d366' }} /> : 'Enable Two-Factor Authentication'}
+            </Button>
+          )}
+          {twoFAError && <Typography color="error" sx={{ mb: 1 }}>{twoFAError}</Typography>}
+          <Dialog open={twoFAQROpen} onClose={() => setTwoFAQROpen(false)}>
+            <DialogTitle>Enable Two-Factor Authentication</DialogTitle>
+            <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pt: 2 }}>
+              <Typography sx={{ mb: 2 }}>Scan this QR code with your authenticator app:</Typography>
+              {twoFAQr && <img src={twoFAQr} alt="2FA QR" style={{ width: 200, height: 200, marginBottom: 16 }} />}
+              <Typography variant="body2" sx={{ mb: 2 }}>Or enter this secret manually: <b>{twoFASecret}</b></Typography>
+              <TextField
+                label="Enter 6-digit code"
+                value={twoFACode}
+                onChange={e => setTwoFACode(e.target.value)}
+                fullWidth
+                margin="normal"
+                inputProps={{ maxLength: 6 }}
+              />
+              {twoFAError && <Typography color="error" sx={{ mb: 1 }}>{twoFAError}</Typography>}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setTwoFAQROpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
+              <Button onClick={handleVerify2FA} variant="contained" sx={{ backgroundColor: '#25d366', color: '#fff' }} disabled={twoFALoading || !twoFACode || twoFACode.length !== 6}>
+                {twoFALoading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Verify & Enable'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+          <Divider sx={{ width: '100%', my: 2, borderColor: 'rgba(255,255,255,0.12)' }} />
           <Button
             variant="contained"
             fullWidth
@@ -532,6 +660,12 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
                 setPasswordError('New passwords do not match.');
                 return;
               }
+              // Password strength check
+              const strong = /[A-Z]/.test(newPassword) && /[^A-Za-z0-9]/.test(newPassword) && newPassword.length >= 8;
+              if (!strong) {
+                setPasswordError('Password must be at least 8 characters, contain an uppercase letter and a special character.');
+                return;
+              }
               try {
                 const token = localStorage.getItem('token');
                 const res = await fetch('http://localhost:5000/api/auth/change-password', {
@@ -586,12 +720,10 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
                 if (!res.ok) {
                   setDeleteError(data.message || 'Failed to delete account.');
                 } else {
-                  setDeleteSuccess(data.message || 'Account scheduled for deletion.');
-                  setTimeout(() => {
-                    localStorage.removeItem('token');
-                    localStorage.removeItem('user');
-                    window.location.reload();
-                  }, 2500);
+                  // Log out user and reload app
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('user');
+                  window.location.reload();
                 }
               } catch (err) {
                 setDeleteError('Server error. Please try again.');
@@ -606,7 +738,6 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           </Button>
         </DialogActions>
       </Dialog>
-      {deleteSuccess && <Typography color="success.main" sx={{ mt: 2 }}>{deleteSuccess}</Typography>}
     </Box>
   );
 };
