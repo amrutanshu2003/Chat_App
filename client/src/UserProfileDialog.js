@@ -41,7 +41,9 @@ const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus,
         </Box>
         <Box display="flex" flexDirection="column" alignItems="center" mb={2}>
           <Box position="relative" display="inline-block" mb={2}>
-            <Avatar src={getFullUrl(user.avatar)} sx={{ width: 80, height: 80, cursor: 'pointer' }} onClick={() => setShowImageDialog(true)} />
+            <Avatar src={getFullUrl(user.avatar)} sx={{ width: 80, height: 80, cursor: 'pointer' }} onClick={() => setShowImageDialog(true)}>
+              {!user.avatar && user.username && user.username[0]}
+            </Avatar>
             {getUserStatus && getUserStatus(user).status === 'online' && (
               <Box position="absolute" bottom={6} right={6} width={8} height={8} bgcolor="#25d366" borderRadius="50%" border="2px solid #fff" />
             )}
