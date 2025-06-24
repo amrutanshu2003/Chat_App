@@ -156,6 +156,14 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Block login if account is scheduled for deletion and deletionDate has passed
+    if (user.deletionScheduled && user.deletionDate && new Date(user.deletionDate) <= new Date()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account has been deleted or is no longer accessible.'
+      });
+    }
+
     // Check password
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
@@ -182,7 +190,9 @@ router.post('/login', async (req, res) => {
         username: user.username,
         email: user.email,
         avatar: user.avatar,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        deletionScheduled: user.deletionScheduled,
+        deletionDate: user.deletionDate
       }
     });
 
@@ -468,7 +478,7 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// Delete account endpoint
+// Delete account endpoint (now schedules deletion)
 router.delete('/delete-account', async (req, res) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -476,20 +486,32 @@ router.delete('/delete-account', async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    // Delete avatar file if it exists
-    if (user.avatar && user.avatar !== '/uploads/default-avatar.png') {
-      const fs = require('fs');
-      const path = require('path');
-      const avatarPath = path.join(__dirname, '..', user.avatar);
-      if (fs.existsSync(avatarPath)) {
-        fs.unlinkSync(avatarPath);
-      }
-    }
-    await User.deleteOne({ _id: user._id });
-    res.json({ success: true, message: 'Account deleted successfully.' });
+    // Schedule deletion for 7 days from now
+    user.deletionScheduled = true;
+    user.deletionDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    await user.save();
+    res.json({ success: true, message: 'Account scheduled for deletion in 7 days.' });
   } catch (error) {
     console.error('Delete account error:', error);
     res.status(500).json({ success: false, message: 'Server error during account deletion.' });
+  }
+});
+
+// Cancel scheduled account deletion
+router.post('/cancel-delete-account', async (req, res) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.userId);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    user.deletionScheduled = false;
+    user.deletionDate = null;
+    await user.save();
+    res.json({ success: true, message: 'Account deletion cancelled.' });
+  } catch (error) {
+    console.error('Cancel delete account error:', error);
+    res.status(500).json({ success: false, message: 'Server error during cancel delete account.' });
   }
 });
 

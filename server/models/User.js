@@ -28,6 +28,14 @@ const UserSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  deletionScheduled: {
+    type: Boolean,
+    default: false
+  },
+  deletionDate: {
+    type: Date,
+    default: null
   }
 });
 

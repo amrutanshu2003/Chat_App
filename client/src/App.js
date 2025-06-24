@@ -64,6 +64,7 @@ import PhoneIcon from '@mui/icons-material/Phone';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import EditIcon from '@mui/icons-material/Edit';
 import { startAuthentication } from '@simplewebauthn/browser';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
@@ -1340,16 +1341,55 @@ function App() {
     }
   };
 
+  const [pendingLoginUser, setPendingLoginUser] = useState(null);
+  const [pendingLoginToken, setPendingLoginToken] = useState('');
+  const [showCancelDeletionDialog, setShowCancelDeletionDialog] = useState(false);
+  const [deletionCountdown, setDeletionCountdown] = useState('');
+
+  useEffect(() => {
+    let interval;
+    const getCountdown = (date) => {
+      if (!date) return '';
+      const now = new Date();
+      const target = new Date(date);
+      const diff = target - now;
+      if (diff <= 0) return 'Scheduled for deletion soon!';
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diff / (1000 * 60)) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+      return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+    };
+    if (showCancelDeletionDialog && (pendingLoginUser?.deletionDate || user?.deletionDate)) {
+      setDeletionCountdown(getCountdown(pendingLoginUser?.deletionDate || user?.deletionDate));
+      interval = setInterval(() => {
+        setDeletionCountdown(getCountdown(pendingLoginUser?.deletionDate || user?.deletionDate));
+      }, 1000);
+    } else {
+      setDeletionCountdown('');
+    }
+    return () => interval && clearInterval(interval);
+  }, [showCancelDeletionDialog, pendingLoginUser, user]);
+
   const handleLogin = async () => {
     try {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password });
-      setToken(res.data.token);
-      setUser(res.data.user);
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('user', JSON.stringify(res.data.user));
-      await requestNotificationPermission();
+      if (res.data.user.deletionScheduled) {
+        setPendingLoginUser(res.data.user);
+        setPendingLoginToken(res.data.token);
+        setShowCancelDeletionDialog(true);
+        return { pendingDeletion: true };
+      } else {
+        setToken(res.data.token);
+        setUser(res.data.user);
+        localStorage.setItem('token', res.data.token);
+        localStorage.setItem('user', JSON.stringify(res.data.user));
+        await requestNotificationPermission();
+        return { pendingDeletion: false };
+      }
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
+      return { pendingDeletion: false };
     }
   };
 
@@ -1936,6 +1976,169 @@ function App() {
   const [pendingAuthEmail, setPendingAuthEmail] = useState('');
   const [authMethodError, setAuthMethodError] = useState('');
 
+  const handleCancelAccountDeletion = async (fromLogin) => {
+    try {
+      const tokenToUse = fromLogin ? pendingLoginToken : localStorage.getItem('token');
+      const res = await fetch('http://localhost:5000/api/auth/cancel-delete-account', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tokenToUse}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (fromLogin) {
+          setToken(pendingLoginToken);
+          setUser({ ...pendingLoginUser, deletionScheduled: false, deletionDate: null });
+          localStorage.setItem('token', pendingLoginToken);
+          localStorage.setItem('user', JSON.stringify({ ...pendingLoginUser, deletionScheduled: false, deletionDate: null }));
+          setShowCancelDeletionDialog(false);
+          setPendingLoginUser(null);
+          setPendingLoginToken('');
+          await requestNotificationPermission();
+        } else {
+          setUser({ ...user, deletionScheduled: false, deletionDate: null });
+          localStorage.setItem('user', JSON.stringify({ ...user, deletionScheduled: false, deletionDate: null }));
+          setShowCancelDeletionDialog(false);
+          setSnackbar({ message: 'Account deletion cancelled.', severity: 'success' });
+        }
+      }
+    } catch (err) {
+      setSnackbar({ message: 'Failed to cancel deletion.', severity: 'error' });
+    }
+  };
+
+  // App Lock Screen Component
+  function AppLockScreen({ onUnlock }) {
+    const [step, setStep] = useState(localStorage.getItem('applock_pin') ? 'enter' : 'set');
+    const [pin, setPin] = useState('');
+    const [confirmPin, setConfirmPin] = useState('');
+    const [error, setError] = useState('');
+    const [bioError, setBioError] = useState('');
+    const [bioAvailable, setBioAvailable] = useState(false);
+
+    useEffect(() => {
+      // Check if WebAuthn is available
+      setBioAvailable(window.PublicKeyCredential !== undefined);
+    }, []);
+
+    const handleSetPin = () => {
+      if (pin.length !== 4 || !/^[0-9]{4}$/.test(pin)) {
+        setError('PIN must be 4 digits');
+        return;
+      }
+      if (pin !== confirmPin) {
+        setError('PINs do not match');
+        return;
+      }
+      localStorage.setItem('applock_pin', pin);
+      setStep('enter');
+      setPin('');
+      setConfirmPin('');
+      setError('');
+    };
+
+    const handleUnlock = () => {
+      const stored = localStorage.getItem('applock_pin');
+      if (pin === stored) {
+        setError('');
+        onUnlock();
+      } else {
+        setError('Incorrect PIN');
+      }
+    };
+
+    const handleReset = () => {
+      localStorage.removeItem('applock_pin');
+      setStep('set');
+      setPin('');
+      setConfirmPin('');
+      setError('');
+    };
+
+    // Biometric authentication handler
+    const handleBiometric = async () => {
+      setBioError('');
+      try {
+        // This is a demo: in real apps, you need to register a credential and verify with server
+        // Here, we just check if the browser supports it and prompt for biometric
+        await startAuthentication({ publicKey: { challenge: new Uint8Array([1,2,3]), timeout: 60000, userVerification: 'preferred', allowCredentials: [] } });
+        onUnlock();
+      } catch (e) {
+        setBioError('Biometric authentication failed or was cancelled.');
+      }
+    };
+
+    return (
+      <Box minHeight="100vh" display="flex" flexDirection="column" alignItems="center" justifyContent="center" bgcolor="#f5f5f5">
+        <Box p={4} borderRadius={4} boxShadow={3} bgcolor="#fff" minWidth={320} textAlign="center">
+          <LockIcon sx={{ fontSize: 48, color: '#25d366', mb: 1 }} />
+          <Typography variant="h5" fontWeight={700} mb={2} color="#25d366">
+            App Lock
+          </Typography>
+          {step === 'set' ? (
+            <>
+              <Typography mb={2}>Set a 4-digit PIN to protect your app</Typography>
+              <TextField
+                label="Enter PIN"
+                type="password"
+                value={pin}
+                onChange={e => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0,4))}
+                inputProps={{ maxLength: 4, inputMode: 'numeric', pattern: '[0-9]*' }}
+                fullWidth
+                margin="normal"
+              />
+              <TextField
+                label="Confirm PIN"
+                type="password"
+                value={confirmPin}
+                onChange={e => setConfirmPin(e.target.value.replace(/[^0-9]/g, '').slice(0,4))}
+                inputProps={{ maxLength: 4, inputMode: 'numeric', pattern: '[0-9]*' }}
+                fullWidth
+                margin="normal"
+              />
+              {error && <Typography color="error" mt={1}>{error}</Typography>}
+              <Button variant="contained" sx={{ mt: 2, bgcolor: '#25d366', '&:hover': { bgcolor: '#1ea952' } }} onClick={handleSetPin} fullWidth>
+                Set PIN
+              </Button>
+            </>
+          ) : (
+            <>
+              <Typography mb={2}>Enter your 4-digit PIN to unlock</Typography>
+              <TextField
+                label="PIN"
+                type="password"
+                value={pin}
+                onChange={e => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0,4))}
+                inputProps={{ maxLength: 4, inputMode: 'numeric', pattern: '[0-9]*' }}
+                fullWidth
+                margin="normal"
+                onKeyDown={e => { if (e.key === 'Enter') handleUnlock(); }}
+              />
+              {error && <Typography color="error" mt={1}>{error}</Typography>}
+              <Button variant="contained" sx={{ mt: 2, bgcolor: '#25d366', '&:hover': { bgcolor: '#1ea952' } }} onClick={handleUnlock} fullWidth>
+                Unlock
+              </Button>
+              {bioAvailable && (
+                <Button variant="outlined" sx={{ mt: 2, borderColor: '#25d366', color: '#25d366', fontWeight: 600 }} onClick={handleBiometric} fullWidth>
+                  Use Biometric (Fingerprint/Face)
+                </Button>
+              )}
+              {bioError && <Typography color="error" mt={1}>{bioError}</Typography>}
+              <Button variant="text" sx={{ mt: 1, color: '#25d366' }} onClick={handleReset} fullWidth>
+                Reset PIN
+              </Button>
+            </>
+          )}
+        </Box>
+      </Box>
+    );
+  }
+
+  // In App function, add state for appLockUnlocked
+  const [appLockUnlocked, setAppLockUnlocked] = useState(() => !localStorage.getItem('applock_pin'));
+  if (!appLockUnlocked) {
+    return <AppLockScreen onUnlock={() => setAppLockUnlocked(true)} />;
+  }
+
   if (!token || !user) {
     return (
       <ThemeProvider theme={theme}>
@@ -2051,6 +2254,46 @@ function App() {
                 >
                   Learn More
                 </Button>
+                {/* Try Demo Button */}
+                <Button
+                  variant="outlined"
+                  size="large"
+                  startIcon={<span style={{fontSize:22,marginRight:2}}>🪄</span>}
+                  sx={{
+                    borderColor: '#25d366',
+                    color: '#25d366',
+                    fontWeight: 600,
+                    px: 4,
+                    py: 1.5,
+                    fontSize: 18,
+                    '&:hover': { borderColor: '#1ea952', color: '#1ea952', bgcolor: 'rgba(37,211,102,0.08)' },
+                  }}
+                  onClick={() => alert('Demo mode coming soon!')}
+                >
+                  Try Demo
+                </Button>
+              </Box>
+              {/* App Lock Badge */}
+              <Box display="flex" alignItems="center" justifyContent="center" mt={3} mb={1}>
+                <LockIcon sx={{ color: '#25d366', fontSize: 28, mr: 1 }} />
+                <Typography variant="subtitle1" fontWeight={600} color="#25d366">
+                  Privacy Protected: App Lock Enabled
+                </Typography>
+              </Box>
+              {/* Security Features List */}
+              <Box display="flex" justifyContent="center" gap={3} mb={2}>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <span style={{fontSize:22}}>🔒</span>
+                  <Typography variant="body2" color="textSecondary">End-to-End Encryption</Typography>
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <span style={{fontSize:22}}>🧬</span>
+                  <Typography variant="body2" color="textSecondary">Biometric/Passcode Lock</Typography>
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <span style={{fontSize:22}}>✅</span>
+                  <Typography variant="body2" color="textSecondary">2FA Security</Typography>
+                </Box>
               </Box>
             </Box>
           </Container>
@@ -2243,9 +2486,9 @@ function App() {
               Cancel
             </Button>
             <Button 
-              onClick={() => {
-                handleLogin();
-                setLoginDialogOpen(false);
+              onClick={async () => {
+                const result = await handleLogin();
+                if (!result?.pendingDeletion) setLoginDialogOpen(false);
               }}
               variant="contained"
               sx={{ 
@@ -2608,6 +2851,49 @@ function App() {
             <Button onClick={() => setAuthMethodDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
           </DialogActions>
         </Dialog>
+        {/* Cancel Deletion Dialog (intercept login and in-app) */}
+        <Dialog open={showCancelDeletionDialog}>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'warning.main' }}>
+            <WarningAmberIcon sx={{ color: 'warning.main', mr: 1 }} />
+            Account Scheduled for Deletion
+          </DialogTitle>
+          <DialogContent>
+            <Typography color="error" fontWeight={600} sx={{ mb: 1 }}>
+              Your account is scheduled for deletion!
+            </Typography>
+            <Typography sx={{ mb: 1 }}>
+              <b>Scheduled Deletion Date:</b> {(pendingLoginUser?.deletionDate || user?.deletionDate) ? new Date(pendingLoginUser?.deletionDate || user?.deletionDate).toLocaleString() : ''}
+            </Typography>
+            <Typography sx={{ mb: 2 }}>
+              <b>Time remaining:</b> {deletionCountdown}
+            </Typography>
+            <Typography sx={{ mb: 2 }}>
+              If you want to keep your account, click <b>Keep Account</b> below. Otherwise, your account will be permanently deleted after the scheduled date.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            {pendingLoginUser ? (
+              <Button onClick={() => {
+                setShowCancelDeletionDialog(false);
+                setPendingLoginUser(null);
+                setPendingLoginToken('');
+              }} color="error" variant="outlined">Cancel Login</Button>
+            ) : (
+              <Button onClick={() => {
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                window.location.reload();
+              }} color="error" variant="outlined">Logout</Button>
+            )}
+            <Button 
+              onClick={() => handleCancelAccountDeletion(!!pendingLoginUser)} 
+              sx={{ bgcolor: '#25d366', color: '#fff', fontWeight: 600, '&:hover': { bgcolor: '#1ea952' } }}
+              variant="contained"
+            >
+              Keep Account
+            </Button>
+          </DialogActions>
+        </Dialog>
       </ThemeProvider>
     );
   }
@@ -2696,12 +2982,16 @@ function App() {
           <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative' }}>
             <Box display="flex" alignItems="center" mb={2} gap={1}>
               <Box flex={1} display="flex" alignItems="center" bgcolor={darkMode ? '#111' : '#f5f5f5'} px={1} sx={{ border: darkMode ? '1.5px solid #222e35' : '1.5px solid #e0e0e0', borderRadius: '50px' }}>
+                {/* Hidden dummy input to catch browser autofill */}
+                <input type="text" name="fake-email" autoComplete="username" style={{ display: 'none' }} />
                 <SearchIcon sx={{ color: darkMode ? '#aebac1' : '#555' }} />
                 <input
                   type="text"
+                  name="chat-search-bar"
                   placeholder="Search or start a new chat"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
+                  autoComplete="new-password"
                   style={{ border: 'none', outline: 'none', background: 'transparent', padding: 8, flex: 1, color: darkMode ? '#fff' : '#222', fontSize: 16 }}
                 />
               </Box>
