@@ -50,13 +50,13 @@ const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus,
             )
           )}
           {/* About section left-aligned */}
-          {!isGroup && user.about && (
+          {!isGroup && (
             <Box display="flex" flexDirection="column" alignItems="flex-start" width="100%">
               <Box display="flex" alignItems="center" mt={1} mb={0.5}>
                 <InfoOutlinedIcon fontSize="small" sx={{ mr: 1 }} />
                 <Typography variant="subtitle2" color="textSecondary">About</Typography>
               </Box>
-              <Typography variant="body2" color="primary" align="left" sx={{ width: '100%', wordBreak: 'break-word', whiteSpace: 'pre-line' }}>{user.about}</Typography>
+              <Typography variant="body2" color="primary" align="left" sx={{ width: '100%', wordBreak: 'break-word', whiteSpace: 'pre-line' }}>{user.about || ''}</Typography>
             </Box>
           )}
         </Box>

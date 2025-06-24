@@ -36,6 +36,7 @@ import TextField from '@mui/material/TextField';
 import CircularProgress from '@mui/material/CircularProgress';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
+import Select from '@mui/material/Select';
 
 const getFullUrl = (url) => {
   if (!url) return '';
@@ -70,6 +71,10 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [resetError, setResetError] = useState('');
+  const [appLockTimeout, setAppLockTimeout] = useState(() => {
+    const stored = localStorage.getItem('applock_timeout');
+    return stored ? parseInt(stored, 10) : 2000;
+  });
 
   const handleAvatarClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -156,6 +161,11 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
     setNewPin('');
     setConfirmPin('');
     setResetError('');
+  };
+
+  const handleTimeoutChange = (e) => {
+    setAppLockTimeout(e.target.value);
+    localStorage.setItem('applock_timeout', e.target.value);
   };
 
   return (
@@ -386,6 +396,10 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           <ListItemIcon><EditIcon /></ListItemIcon>
           Edit Profile
         </MenuItem>
+        <MenuItem onClick={() => setResetPinDialogOpen(true)} sx={{ mb: 1 }}>
+          <ListItemIcon><LockIcon sx={{ color: appLockEnabled ? '#25d366' : 'inherit' }} /></ListItemIcon>
+          App Lock
+        </MenuItem>
         <MenuItem onClick={handleGeneralClick}>
           <ListItemIcon><TuneOutlinedIcon /></ListItemIcon>
           General
@@ -523,19 +537,61 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
               {appLockEnabled ? 'Disable' : 'Enable'}
             </Button>
           </Box>
-          <Tooltip title={appLockEnabled ? 'Change your app lock PIN' : 'Enable App Lock to set a PIN'} placement="top">
-            <span>
-              <Button
-                variant="outlined"
-                fullWidth
-                sx={{ color: '#e53935', borderColor: '#e53935', fontWeight: 600, mb: 2, mt: 1 }}
-                onClick={() => setResetPinDialogOpen(true)}
-                disabled={!appLockEnabled}
-              >
-                Reset PIN
-              </Button>
-            </span>
-          </Tooltip>
+          <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" mb={2}>
+            <Typography variant="body2" fontWeight={500}>Auto-lock after inactivity</Typography>
+            <Select
+              value={appLockTimeout}
+              onChange={handleTimeoutChange}
+              size="small"
+              sx={{
+                bgcolor: darkMode ? '#111' : '#fff',
+                color: darkMode ? '#fff' : 'inherit',
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#25d366 !important',
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#25d366 !important',
+                },
+                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#25d366 !important',
+                },
+              }}
+              MenuProps={{
+                PaperProps: {
+                  sx: {
+                    bgcolor: darkMode ? '#333' : '#333',
+                    '& .MuiMenuItem-root.Mui-selected': {
+                      bgcolor: '#25d366',
+                      color: '#fff',
+                      '&:hover': {
+                        bgcolor: '#1ea952',
+                      },
+                    },
+                  },
+                },
+              }}
+              disabled={!appLockEnabled}
+            >
+              <MenuItem value={60000}>1 minute</MenuItem>
+              <MenuItem value={120000}>2 minutes</MenuItem>
+              <MenuItem value={300000}>5 minutes</MenuItem>
+              <MenuItem value={900000}>15 minutes</MenuItem>
+              <MenuItem value={1800000}>30 minutes</MenuItem>
+              <MenuItem value={3600000}>1 hour</MenuItem>
+              <MenuItem value={7200000}>2 hours</MenuItem>
+              <MenuItem value={18000000}>5 hours</MenuItem>
+            </Select>
+          </Box>
+          {appLockEnabled && (
+            <Button
+              variant="outlined"
+              fullWidth
+              sx={{ color: '#e53935', borderColor: '#e53935', fontWeight: 600, mb: 2, mt: 1 }}
+              onClick={() => setResetPinDialogOpen(true)}
+            >
+              Reset PIN
+            </Button>
+          )}
           <Divider sx={{ width: '100%', my: 2, borderColor: 'rgba(255,255,255,0.12)' }} />
           <Button
             variant="contained"
@@ -674,34 +730,135 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           </Button>
         </DialogActions>
       </Dialog>
-      <Dialog open={resetPinDialogOpen} onClose={() => setResetPinDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Reset App Lock PIN</DialogTitle>
+      <Dialog open={resetPinDialogOpen} onClose={() => setResetPinDialogOpen(false)} PaperProps={{ sx: { bgcolor: darkMode ? '#000' : '#fff', minWidth: 320 } }}>
+        <DialogTitle sx={{ color: darkMode ? '#fff' : 'inherit' }}>App Lock Settings</DialogTitle>
         <DialogContent>
-          <form onSubmit={handleResetPin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <TextField
-              label="New 4-digit PIN"
-              type="password"
-              value={newPin}
-              onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))}
-              inputProps={{ maxLength: 4 }}
-              fullWidth
-              margin="normal"
-            />
-            <TextField
-              label="Confirm new PIN"
-              type="password"
-              value={confirmPin}
-              onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-              inputProps={{ maxLength: 4 }}
-              fullWidth
-              margin="normal"
-            />
-            {resetError && <Typography color="error" align="center">{resetError}</Typography>}
-            <Box display="flex" justifyContent="flex-end" gap={1} mt={2}>
-              <Button onClick={() => setResetPinDialogOpen(false)} color="inherit">Cancel</Button>
-              <Button type="submit" variant="contained" sx={{ backgroundColor: '#25d366', color: '#fff' }}>Set PIN</Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography sx={{ color: darkMode ? '#fff' : 'inherit' }}>Enable App Lock</Typography>
+              <IconButton onClick={handleToggleAppLock} sx={{ color: appLockEnabled ? '#25d366' : (darkMode ? '#aebac1' : '#666') }}>
+                {appLockEnabled ? <LockIcon /> : <LockOpenIcon />}
+              </IconButton>
             </Box>
-          </form>
+            
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Typography sx={{ color: darkMode ? '#fff' : 'inherit' }}>Auto-lock after</Typography>
+              <Select
+                value={appLockTimeout}
+                onChange={handleTimeoutChange}
+                size="small"
+                sx={{
+                  bgcolor: darkMode ? '#111' : '#fff',
+                  color: darkMode ? '#fff' : 'inherit',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#25d366 !important',
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#25d366 !important',
+                  },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                    borderColor: '#25d366 !important',
+                  },
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      bgcolor: darkMode ? '#333' : '#333',
+                      '& .MuiMenuItem-root.Mui-selected': {
+                        bgcolor: '#25d366',
+                        color: '#fff',
+                        '&:hover': {
+                          bgcolor: '#1ea952',
+                        },
+                      },
+                    },
+                  },
+                }}
+              >
+                <MenuItem value={60000}>1 minute</MenuItem>
+                <MenuItem value={120000}>2 minutes</MenuItem>
+                <MenuItem value={300000}>5 minutes</MenuItem>
+                <MenuItem value={900000}>15 minutes</MenuItem>
+                <MenuItem value={1800000}>30 minutes</MenuItem>
+                <MenuItem value={3600000}>1 hour</MenuItem>
+                <MenuItem value={7200000}>2 hours</MenuItem>
+                <MenuItem value={18000000}>5 hours</MenuItem>
+              </Select>
+            </Box>
+
+            <form onSubmit={handleResetPin}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField
+                  label="New PIN"
+                  type="password"
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value)}
+                  error={Boolean(resetError)}
+                  inputProps={{ maxLength: 4, inputMode: 'numeric', pattern: '[0-9]*' }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: darkMode ? '#111' : '#fff',
+                      '& fieldset': {
+                        borderColor: darkMode ? '#333' : 'rgba(0, 0, 0, 0.23)',
+                      },
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: darkMode ? '#aebac1' : 'inherit',
+                    },
+                    '& input': {
+                      color: darkMode ? '#fff' : 'inherit',
+                    },
+                  }}
+                />
+                <TextField
+                  label="Confirm PIN"
+                  type="password"
+                  value={confirmPin}
+                  onChange={(e) => setConfirmPin(e.target.value)}
+                  error={Boolean(resetError)}
+                  helperText={resetError}
+                  inputProps={{ maxLength: 4, inputMode: 'numeric', pattern: '[0-9]*' }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      bgcolor: darkMode ? '#111' : '#fff',
+                      '& fieldset': {
+                        borderColor: darkMode ? '#333' : 'rgba(0, 0, 0, 0.23)',
+                      },
+                    },
+                    '& .MuiInputLabel-root': {
+                      color: darkMode ? '#aebac1' : 'inherit',
+                    },
+                    '& input': {
+                      color: darkMode ? '#fff' : 'inherit',
+                    },
+                    '& .MuiFormHelperText-root': {
+                      color: '#f44336',
+                    },
+                  }}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 3 }}>
+                <Button onClick={() => {
+                  setResetPinDialogOpen(false);
+                  setNewPin('');
+                  setConfirmPin('');
+                  setResetError('');
+                }} sx={{ color: '#25d366' }}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  sx={{
+                    bgcolor: '#25d366',
+                    '&:hover': { bgcolor: '#1fab54' },
+                  }}
+                >
+                  Save
+                </Button>
+              </Box>
+            </form>
+          </Box>
         </DialogContent>
       </Dialog>
     </Box>

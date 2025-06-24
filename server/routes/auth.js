@@ -46,7 +46,7 @@ function isPasswordStrong(password) {
 // Register new user
 router.post('/register', upload.single('avatar'), async (req, res) => {
   try {
-    let { username, email, password } = req.body;
+    let { username, email, password, about } = req.body;
 
     // Handle both JSON and FormData
     if (req.headers['content-type']?.includes('multipart/form-data')) {
@@ -91,7 +91,8 @@ router.post('/register', upload.single('avatar'), async (req, res) => {
     const userData = {
       username,
       email,
-      password: hashedPassword
+      password: hashedPassword,
+      about: about || ''
     };
 
     // Add avatar if uploaded
@@ -121,6 +122,7 @@ router.post('/register', upload.single('avatar'), async (req, res) => {
         username: user.username,
         email: user.email,
         avatar: user.avatar,
+        about: user.about,
         createdAt: user.createdAt
       }
     });
@@ -190,6 +192,7 @@ router.post('/login', async (req, res) => {
         username: user.username,
         email: user.email,
         avatar: user.avatar,
+        about: user.about,
         createdAt: user.createdAt,
         deletionScheduled: user.deletionScheduled,
         deletionDate: user.deletionDate
@@ -229,7 +232,16 @@ router.get('/profile', async (req, res) => {
 
     res.json({
       success: true,
-      user
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        about: user.about,
+        createdAt: user.createdAt,
+        deletionScheduled: user.deletionScheduled,
+        deletionDate: user.deletionDate
+      }
     });
 
   } catch (error) {
@@ -264,7 +276,7 @@ router.put('/profile', upload.single('avatar'), async (req, res) => {
     }
 
     // Update user data
-    const { username, email } = req.body;
+    const { username, email, about } = req.body;
     
     if (username) {
       // Check if username is already taken by another user
@@ -298,6 +310,10 @@ router.put('/profile', upload.single('avatar'), async (req, res) => {
       user.email = email;
     }
 
+    if (about !== undefined) {
+      user.about = about;
+    }
+
     // Handle avatar upload
     if (req.file) {
       // Delete old avatar file if it exists
@@ -324,6 +340,7 @@ router.put('/profile', upload.single('avatar'), async (req, res) => {
         username: user.username,
         email: user.email,
         avatar: user.avatar,
+        about: user.about,
         createdAt: user.createdAt
       }
     });

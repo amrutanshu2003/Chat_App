@@ -275,8 +275,8 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
         </Dialog>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSave} variant="contained">Save</Button>
+        <Button onClick={onClose} sx={{ color: '#25d366' }}>Cancel</Button>
+        <Button onClick={handleSave} variant="contained" sx={{ bgcolor: '#25d366', '&:hover': { bgcolor: '#1ea952' } }}>Save</Button>
       </DialogActions>
     </Dialog>
   );

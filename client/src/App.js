@@ -1691,6 +1691,7 @@ function App() {
       const formData = new FormData();
       formData.append('username', updatedUser.username);
       formData.append('email', updatedUser.email);
+      formData.append('about', updatedUser.about);
       if (avatarFile) {
         formData.append('avatar', avatarFile);
       } else if (updatedUser.avatar === '') {
@@ -1715,6 +1716,7 @@ function App() {
 
       // Final update from server, ensuring our optimistic change is respected
       setUser(serverUser);
+      setProfileDialogUser(serverUser);
       localStorage.setItem('user', JSON.stringify(serverUser));
       setSnackbar({ open: true, message: 'Profile updated successfully!', severity: 'success' });
     } catch (err) {
@@ -2126,6 +2128,28 @@ function App() {
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Inactivity lock logic
+  useEffect(() => {
+    if (!isLocked && localStorage.getItem('applock_enabled') === 'true') {
+      let timeout;
+      const getTimeout = () => parseInt(localStorage.getItem('applock_timeout') || '2000', 10);
+      const resetTimer = () => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          setIsLocked(true);
+        }, getTimeout());
+      };
+      const events = ['mousemove', 'keydown', 'mousedown', 'touchstart'];
+      events.forEach(event => window.addEventListener(event, resetTimer));
+      resetTimer();
+      return () => {
+        clearTimeout(timeout);
+        events.forEach(event => window.removeEventListener(event, resetTimer));
+      };
+    }
+  }, [isLocked]);
+
   if (isLocked) {
     return <LockScreen onUnlock={() => setIsLocked(false)} />;
   }
