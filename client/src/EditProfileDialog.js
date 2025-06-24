@@ -179,7 +179,9 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
               src={getFullUrl(avatar)}
               sx={{ width: 100, height: 100, cursor: 'pointer', mb: 2, transition: 'filter 0.2s' }}
               style={avatarHover ? { filter: 'brightness(0.5)' } : {}}
-            />
+            >
+              {!avatar && username && username[0]}
+            </Avatar>
             {avatarHover && (
               <Box
                 ref={pencilRef}
