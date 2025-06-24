@@ -1298,6 +1298,12 @@ function App() {
       return;
     }
 
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters long.');
+      setLoading(false);
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       setLoading(false);
@@ -2389,7 +2395,9 @@ function App() {
             <TextField label="Username" fullWidth margin="normal" value={username} onChange={e => setUsername(e.target.value)} />
             <TextField label="Email" fullWidth margin="normal" value={email} onChange={e => setEmail(e.target.value)} />
             <TextField label="Password" type="password" fullWidth margin="normal" value={password} onChange={e => setPassword(e.target.value)} />
-            <TextField label="Confirm Password" type="password" fullWidth margin="normal" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onPaste={() => {}} />
+            <TextField label="Confirm Password" type="password" fullWidth margin="normal" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} 
+              onPaste={e => {}} // Explicitly allow paste
+            />
             
             {/* Have an account? Login link */}
             <Box sx={{ mt: 3, textAlign: 'center' }}>
@@ -2405,7 +2413,7 @@ function App() {
                     setConfirmPassword('');
                     setAvatar('');
                     setAvatarFile(null);
-                    setError('');
+                  setError('');
                     setRegisterDialogOpen(false);
                     setLoginDialogOpen(true);
                   }}
