@@ -265,12 +265,12 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
               max={3}
               step={0.1}
               onChange={(e, z) => setZoom(z)}
-              sx={{ mt: 2 }}
+              sx={{ mt: 2, color: '#25d366' }}
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCropCancel}>Cancel</Button>
-            <Button onClick={handleCropSave} variant="contained">Save</Button>
+            <Button onClick={handleCropCancel} sx={{ color: '#25d366' }}>Cancel</Button>
+            <Button onClick={handleCropSave} variant="contained" sx={{ bgcolor: '#25d366', '&:hover': { bgcolor: '#1ea952' } }}>Save</Button>
           </DialogActions>
         </Dialog>
       </DialogContent>

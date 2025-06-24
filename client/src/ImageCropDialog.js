@@ -133,10 +133,11 @@ const ImageCropDialog = ({ open, onClose, imageSrc, onCropComplete }) => {
                         step={0.1}
                         aria-labelledby="Zoom"
                         onChange={(e, newValue) => setScale(newValue)}
+                        sx={{ color: '#25d366' }}
                     />
                 </Box>
-                <Button onClick={onClose}>Cancel</Button>
-                <Button onClick={handleCrop} variant="contained">Crop</Button>
+                <Button onClick={onClose} sx={{ color: '#25d366' }}>Cancel</Button>
+                <Button onClick={handleCrop} variant="contained" sx={{ bgcolor: '#25d366', '&:hover': { bgcolor: '#1ea952' } }}>Crop</Button>
             </DialogActions>
         </Dialog>
     );
