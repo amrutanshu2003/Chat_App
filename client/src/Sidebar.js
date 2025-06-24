@@ -34,6 +34,8 @@ import Slider from '@mui/material/Slider';
 import SocialXIcon from './SocialXIcon';
 import TextField from '@mui/material/TextField';
 import CircularProgress from '@mui/material/CircularProgress';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
 
 const getFullUrl = (url) => {
   if (!url) return '';
@@ -63,6 +65,11 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [appLockEnabled, setAppLockEnabled] = useState(() => localStorage.getItem('applock_enabled') === 'true');
+  const [resetPinDialogOpen, setResetPinDialogOpen] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [resetError, setResetError] = useState('');
 
   const handleAvatarClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -117,6 +124,38 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
 
   const handleChangePassword = () => {
     setChangePasswordDialogOpen(true);
+  };
+
+  const handleToggleAppLock = () => {
+    const newValue = !appLockEnabled;
+    setAppLockEnabled(newValue);
+    localStorage.setItem('applock_enabled', newValue);
+    if (!newValue) {
+      // Optionally clear PIN when disabling
+      // localStorage.removeItem('lockscreen_pin');
+    }
+  };
+
+  const handleResetPin = (e) => {
+    e.preventDefault();
+    const prevPin = localStorage.getItem('lockscreen_pin') || '';
+    if (newPin.length !== 4 || /\D/.test(newPin)) {
+      setResetError('PIN must be 4 digits.');
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setResetError('PINs do not match.');
+      return;
+    }
+    if (newPin === prevPin) {
+      setResetError('Enter a new PIN');
+      return;
+    }
+    localStorage.setItem('lockscreen_pin', newPin);
+    setResetPinDialogOpen(false);
+    setNewPin('');
+    setConfirmPin('');
+    setResetError('');
   };
 
   return (
@@ -473,6 +512,31 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
             Password last changed: 10 days ago
           </Typography>
           <Divider sx={{ width: '100%', my: 2, borderColor: 'rgba(255,255,255,0.12)' }} />
+          <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" mb={1}>
+            <Typography variant="body1" fontWeight={500}>App Lock</Typography>
+            <Button
+              variant={appLockEnabled ? 'contained' : 'outlined'}
+              startIcon={appLockEnabled ? <LockIcon /> : <LockOpenIcon />}
+              sx={{ backgroundColor: appLockEnabled ? '#25d366' : undefined, color: appLockEnabled ? '#fff' : '#25d366', borderColor: '#25d366', fontWeight: 600, minWidth: 120, '&:hover': { backgroundColor: appLockEnabled ? '#1da851' : undefined } }}
+              onClick={handleToggleAppLock}
+            >
+              {appLockEnabled ? 'Disable' : 'Enable'}
+            </Button>
+          </Box>
+          <Tooltip title={appLockEnabled ? 'Change your app lock PIN' : 'Enable App Lock to set a PIN'} placement="top">
+            <span>
+              <Button
+                variant="outlined"
+                fullWidth
+                sx={{ color: '#e53935', borderColor: '#e53935', fontWeight: 600, mb: 2, mt: 1 }}
+                onClick={() => setResetPinDialogOpen(true)}
+                disabled={!appLockEnabled}
+              >
+                Reset PIN
+              </Button>
+            </span>
+          </Tooltip>
+          <Divider sx={{ width: '100%', my: 2, borderColor: 'rgba(255,255,255,0.12)' }} />
           <Button
             variant="contained"
             fullWidth
@@ -609,6 +673,36 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
             {deleteLoading ? 'Processing...' : 'Confirm & Schedule Deletion'}
           </Button>
         </DialogActions>
+      </Dialog>
+      <Dialog open={resetPinDialogOpen} onClose={() => setResetPinDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Reset App Lock PIN</DialogTitle>
+        <DialogContent>
+          <form onSubmit={handleResetPin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <TextField
+              label="New 4-digit PIN"
+              type="password"
+              value={newPin}
+              onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))}
+              inputProps={{ maxLength: 4 }}
+              fullWidth
+              margin="normal"
+            />
+            <TextField
+              label="Confirm new PIN"
+              type="password"
+              value={confirmPin}
+              onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+              inputProps={{ maxLength: 4 }}
+              fullWidth
+              margin="normal"
+            />
+            {resetError && <Typography color="error" align="center">{resetError}</Typography>}
+            <Box display="flex" justifyContent="flex-end" gap={1} mt={2}>
+              <Button onClick={() => setResetPinDialogOpen(false)} color="inherit">Cancel</Button>
+              <Button type="submit" variant="contained" sx={{ backgroundColor: '#25d366', color: '#fff' }}>Set PIN</Button>
+            </Box>
+          </form>
+        </DialogContent>
       </Dialog>
     </Box>
   );

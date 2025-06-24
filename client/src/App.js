@@ -2118,7 +2118,14 @@ function App() {
 
   // In App function, add state for appLockUnlocked
   const [appLockUnlocked, setAppLockUnlocked] = useState(() => !localStorage.getItem('applock_pin'));
-  const [isLocked, setIsLocked] = useState(true); // App lock state
+  const [isLocked, setIsLocked] = useState(() => localStorage.getItem('applock_enabled') === 'true'); // App lock state
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setIsLocked(localStorage.getItem('applock_enabled') === 'true');
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
   if (isLocked) {
     return <LockScreen onUnlock={() => setIsLocked(false)} />;
   }
