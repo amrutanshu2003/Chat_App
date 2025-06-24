@@ -284,7 +284,6 @@ function App() {
   const [recordingTimer, setRecordingTimer] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
   const [isAvatarHovered, setIsAvatarHovered] = useState(false);
-  const [welcomeText, setWelcomeText] = useState('');
 
   const [audioStates, setAudioStates] = useState({});
   const audioRefs = useRef({});
@@ -296,23 +295,6 @@ function App() {
       audio.currentTime = time;
     }
   };
-
-  useEffect(() => {
-    if (!token && !user) {
-      const fullWelcomeText = 'Welcome to Social X';
-      let i = 0;
-      setWelcomeText('');
-      const typingInterval = setInterval(() => {
-        if (i < fullWelcomeText.length) {
-          setWelcomeText(prevText => prevText + fullWelcomeText.charAt(i));
-          i++;
-        } else {
-          clearInterval(typingInterval);
-        }
-      }, 120);
-      return () => clearInterval(typingInterval);
-    }
-  }, [token, user]);
 
   const theme = createTheme({
     palette: {
@@ -2212,8 +2194,9 @@ function App() {
                   Social X
                 </Typography>
               </Box>
+              {/* Replace animated welcomeText with static text */}
               <Typography variant="h4" color={darkMode ? '#fff' : '#222'} sx={{ mb: 3, fontWeight: 500, minHeight: '2.5rem' }}>
-                {welcomeText}
+                Welcome to Social X
               </Typography>
               <Typography variant="h6" color={darkMode ? '#aaa' : '#666'} sx={{ mb: 6, maxWidth: 600, mx: 'auto' }}>
                 Connect with friends and family through instant messaging, voice messages, and file sharing. 
