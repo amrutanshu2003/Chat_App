@@ -102,9 +102,15 @@ const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus,
           <ArrowBackIcon />
         </IconButton>
         <Box display="flex" justifyContent="center" alignItems="center" height="100vh" width="100vw">
-          <img src={getFullUrl(user.avatar)} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} 
-            onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
-          />
+          {user.avatar ? (
+            <img src={getFullUrl(user.avatar)} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} 
+              onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+            />
+          ) : (
+            <Avatar sx={{ width: 180, height: 180, fontSize: 80 }}>
+              {user.username && user.username[0]}
+            </Avatar>
+          )}
         </Box>
       </Dialog>
     </Drawer>
