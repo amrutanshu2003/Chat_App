@@ -92,7 +92,8 @@ router.post('/register', upload.single('avatar'), async (req, res) => {
       username,
       email,
       password: hashedPassword,
-      about: about || ''
+      about: about || '',
+      passwordChangedAt: new Date()
     };
 
     // Add avatar if uploaded
@@ -123,7 +124,8 @@ router.post('/register', upload.single('avatar'), async (req, res) => {
         email: user.email,
         avatar: user.avatar,
         about: user.about,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        passwordChangedAt: user.passwordChangedAt
       }
     });
 
@@ -195,7 +197,8 @@ router.post('/login', async (req, res) => {
         about: user.about,
         createdAt: user.createdAt,
         deletionScheduled: user.deletionScheduled,
-        deletionDate: user.deletionDate
+        deletionDate: user.deletionDate,
+        passwordChangedAt: user.passwordChangedAt
       }
     });
 
@@ -240,7 +243,8 @@ router.get('/profile', async (req, res) => {
         about: user.about,
         createdAt: user.createdAt,
         deletionScheduled: user.deletionScheduled,
-        deletionDate: user.deletionDate
+        deletionDate: user.deletionDate,
+        passwordChangedAt: user.passwordChangedAt
       }
     });
 
@@ -329,6 +333,7 @@ router.put('/profile', upload.single('avatar'), async (req, res) => {
       user.avatar = `/uploads/${req.file.filename}`;
     }
 
+    user.passwordChangedAt = new Date();
     await user.save();
 
     // Return updated user data (without password)
@@ -341,7 +346,8 @@ router.put('/profile', upload.single('avatar'), async (req, res) => {
         email: user.email,
         avatar: user.avatar,
         about: user.about,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
+        passwordChangedAt: user.passwordChangedAt
       }
     });
 
@@ -443,6 +449,7 @@ router.post('/change-password', async (req, res) => {
     }
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
+    user.passwordChangedAt = new Date();
     await user.save();
     res.json({ success: true, message: 'Password changed successfully.' });
   } catch (error) {
@@ -486,6 +493,7 @@ router.post('/reset-password', async (req, res) => {
     if (!user) return res.status(400).json({ success: false, message: 'User not found.' });
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
+    user.passwordChangedAt = new Date();
     await user.save();
     delete resetTokens[token];
     res.json({ success: true, message: 'Password reset successful.' });

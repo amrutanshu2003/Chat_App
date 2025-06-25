@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Container, Box, TextField, Button, Typography, List, ListItem, Paper, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, Checkbox, FormControlLabel, Switch, ListItemText, Tooltip } from '@mui/material';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Container, Box, TextField, Button, Typography, List, ListItem, Paper, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, Checkbox, FormControlLabel, Switch, ListItemText, Tooltip, CssBaseline } from '@mui/material';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
@@ -66,6 +66,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { startAuthentication } from '@simplewebauthn/browser';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import LockScreen from './LockScreen';
+import AddIcon from '@mui/icons-material/Add';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
@@ -179,6 +180,19 @@ function App() {
     const stored = localStorage.getItem('darkMode');
     return stored ? JSON.parse(stored) : false;
   });
+  const [seasonalTheme, setSeasonalTheme] = useState(() => {
+    const stored = localStorage.getItem('seasonalTheme');
+    console.log('Initializing seasonal theme from localStorage:', stored);
+    return stored || 'auto'; // auto, spring, summer, autumn, winter
+  });
+
+  // Function to set seasonal theme and persist to localStorage
+  const setSeasonalThemeAndPersist = (theme) => {
+    setSeasonalTheme(theme);
+    localStorage.setItem('seasonalTheme', theme);
+    console.log('Seasonal theme persisted to localStorage:', theme);
+  };
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showLogin, setShowLogin] = useState(true);
@@ -197,9 +211,98 @@ function App() {
   const [statuses, setStatuses] = useState([]);
   const [userStatusMap, setUserStatusMap] = useState({});
   const [isBlocked, setIsBlocked] = useState(false);
-  const filteredUsers = users.filter(u => u.username.toLowerCase().includes(search.toLowerCase()));
+  const [showNewChatDialog, setShowNewChatDialog] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [newChatSearch, setNewChatSearch] = useState('');
+  
+  const filteredUsers = users.filter(u => {
+    // Handle cases where username might be null, undefined, or not a string
+    if (!u || !u.username || typeof u.username !== 'string') {
+      console.log('Skipping user with invalid username:', u);
+      return false;
+    }
+    return u.username.toLowerCase().includes(search.toLowerCase());
+  });
+  
   const pinnedChats = filteredUsers.filter(u => pinned.includes(u._id));
   const unpinnedChats = filteredUsers.filter(u => !pinned.includes(u._id));
+
+  // Debug logging for search functionality
+  console.log('Search value:', search);
+  console.log('Users array:', users);
+  console.log('Filtered users:', filteredUsers);
+  console.log('Pinned chats:', pinnedChats);
+  console.log('Unpinned chats:', unpinnedChats);
+
+  // Helper to get current season
+  const getCurrentSeason = () => {
+    const month = new Date().getMonth() + 1;
+    if (month >= 3 && month <= 5) return "spring";
+    if (month >= 6 && month <= 8) return "summer";
+    if (month >= 9 && month <= 11) return "autumn";
+    return "winter";
+  };
+
+  // Get the effective seasonal theme
+  const getEffectiveSeasonalTheme = () => {
+    return seasonalTheme === 'auto' ? getCurrentSeason() : seasonalTheme;
+  };
+
+  // Seasonal color palettes
+  const seasonalColors = {
+    spring: {
+      primary: '#66bb6a',
+      secondary: '#b2dfdb',
+      background: '#e8f5e9',
+      paper: '#f1f8e9'
+    },
+    summer: {
+      primary: '#ffd54f',
+      secondary: '#ffe082',
+      background: '#fffde7',
+      paper: '#fffef7'
+    },
+    autumn: {
+      primary: '#ff8a65',
+      secondary: '#ffccbc',
+      background: '#fbe9e7',
+      paper: '#fdf5f3'
+    },
+    winter: {
+      primary: '#90caf9',
+      secondary: '#b3e5fc',
+      background: '#e3f2fd',
+      paper: '#f0f8ff'
+    }
+  };
+
+  const currentSeasonalColors = seasonalColors[getEffectiveSeasonalTheme()] || seasonalColors.winter;
+
+  // Debug useEffect to monitor theme changes
+  useEffect(() => {
+    console.log('Seasonal theme changed to:', seasonalTheme);
+    console.log('Effective seasonal theme:', getEffectiveSeasonalTheme());
+    console.log('Current seasonal colors:', currentSeasonalColors);
+    
+    // Show a temporary notification when theme changes
+    if (seasonalTheme !== 'auto') {
+      const seasonNames = {
+        spring: 'Spring',
+        summer: 'Summer', 
+        autumn: 'Autumn',
+        winter: 'Winter'
+      };
+      const seasonName = seasonNames[seasonalTheme] || seasonalTheme;
+      setSnackbar({
+        message: `🎨 Theme changed to ${seasonName}! Check the app background and UI elements.`,
+        severity: 'success'
+      });
+    }
+  }, [seasonalTheme, currentSeasonalColors]);
+
+  // Debug useEffect to monitor theme changes
+  // (REMOVED: This block caused 'Cannot access theme before initialization' error)
+
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileDialogUser, setProfileDialogUser] = useState(null);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState(null);
@@ -297,77 +400,88 @@ function App() {
     }
   };
 
-  const theme = createTheme({
-    palette: {
-      mode: darkMode ? 'dark' : 'light',
-      ...(darkMode
-        ? {
-            background: {
-              default: '#000',
-              paper: '#111',
-            },
-            text: {
-              primary: '#fff',
-              secondary: '#aaa',
-            },
-            primary: {
-              main: '#1976d2',
-            },
-            secondary: {
-              main: '#90caf9',
-            },
-          }
-        : {
-            background: {
-              default: '#f5f5f5',
-              paper: '#fff',
-            },
-            text: {
-              primary: '#222',
-              secondary: '#555',
-            },
-            primary: {
-              main: '#1976d2',
-            },
-            secondary: {
-              main: '#1976d2',
-            },
-          }),
-    },
-    components: {
-      MuiTextField: {
-        styleOverrides: {
-          root: {
-            '& .MuiOutlinedInput-root': {
-              '&.Mui-focused fieldset': {
-                borderColor: '#25d366',
+  const theme = useMemo(() => {
+    console.log('Creating theme with seasonal theme:', seasonalTheme, 'currentSeasonalColors:', currentSeasonalColors);
+    return createTheme({
+      palette: {
+        mode: darkMode ? 'dark' : 'light',
+        ...(darkMode
+          ? {
+              background: {
+                default: '#000',
+                paper: '#111',
+              },
+              text: {
+                primary: '#fff',
+                secondary: '#aaa',
+              },
+              primary: {
+                main: '#1976d2',
+              },
+              secondary: {
+                main: '#90caf9',
+              },
+            }
+          : {
+              background: {
+                default: currentSeasonalColors.background,
+                paper: currentSeasonalColors.paper,
+              },
+              text: {
+                primary: '#222',
+                secondary: '#555',
+              },
+              primary: {
+                main: currentSeasonalColors.primary,
+              },
+              secondary: {
+                main: currentSeasonalColors.secondary,
+              },
+            }),
+      },
+      components: {
+        MuiTextField: {
+          styleOverrides: {
+            root: {
+              '& .MuiOutlinedInput-root': {
+                '&.Mui-focused fieldset': {
+                  borderColor: darkMode ? '#25d366' : currentSeasonalColors.primary,
+                },
+              },
+              '& label.Mui-focused': {
+                color: darkMode ? '#25d366' : currentSeasonalColors.primary,
+              },
+              // Style for autofill
+              '& input:-webkit-autofill, & input:-webkit-autofill:hover, & input:-webkit-autofill:focus, & input:-webkit-autofill:active': {
+                '-webkit-box-shadow': darkMode 
+                  ? '0 0 0 30px #333 inset !important' 
+                  : `0 0 0 30px ${currentSeasonalColors.paper} inset !important`,
+                '-webkit-text-fill-color': darkMode ? '#fff !important' : '#000 !important',
+                caretColor: darkMode ? '#fff' : '#000', // Ensure cursor color matches text
+                borderRadius: 'inherit', // Maintain the border radius
               },
             },
-            '& label.Mui-focused': {
-              color: '#25d366',
+          },
+        },
+        MuiPaper: {
+          styleOverrides: {
+            root: {
+              backgroundColor: darkMode ? '#222' : currentSeasonalColors.paper,
+              color: darkMode ? '#fff' : '#222',
+              transition: 'background-color 0.3s ease',
             },
-            // Style for autofill
-            '& input:-webkit-autofill, & input:-webkit-autofill:hover, & input:-webkit-autofill:focus, & input:-webkit-autofill:active': {
-              '-webkit-box-shadow': darkMode 
-                ? '0 0 0 30px #333 inset !important' 
-                : '0 0 0 30px #f0f0f0 inset !important',
-              '-webkit-text-fill-color': darkMode ? '#fff !important' : '#000 !important',
-              caretColor: darkMode ? '#fff' : '#000', // Ensure cursor color matches text
-              borderRadius: 'inherit', // Maintain the border radius
+          },
+        },
+        MuiButton: {
+          styleOverrides: {
+            root: {
+              transition: 'all 0.3s ease',
             },
           },
         },
       },
-      MuiPaper: {
-        styleOverrides: {
-          root: {
-            backgroundColor: darkMode ? '#222' : '#fff',
-            color: darkMode ? '#fff' : '#222',
-          },
-        },
-      },
-    },
-  });
+    });
+  }, [darkMode, seasonalTheme, currentSeasonalColors]);
 
   const handlePlayPause = async (msgId) => {
     if (!user || !user.id) return;
@@ -986,9 +1100,16 @@ function App() {
   // Fetch users after login
   useEffect(() => {
     if (token) {
+      console.log('Fetching users with token:', token);
       axios.get(`${API_URL}/messages/users/all`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(res => setUsers(res.data))
-        .catch(() => setUsers([]));
+        .then(res => {
+          console.log('Users fetched successfully:', res.data);
+          setUsers(res.data);
+        })
+        .catch((error) => {
+          console.error('Error fetching users:', error);
+          setUsers([]);
+        });
     }
   }, [token]);
 
@@ -1354,6 +1475,21 @@ function App() {
     return () => interval && clearInterval(interval);
   }, [showCancelDeletionDialog, pendingLoginUser, user]);
 
+  // Fetch user profile from backend
+  const fetchUserProfile = async (tokenToUse = token) => {
+    try {
+      const res = await axios.get(`${API_URL}/auth/profile`, {
+        headers: { Authorization: `Bearer ${tokenToUse}` }
+      });
+      if (res.data && res.data.user) {
+        setUser(res.data.user);
+        localStorage.setItem('user', JSON.stringify(res.data.user));
+      }
+    } catch (err) {
+      console.error('Failed to fetch user profile', err);
+    }
+  };
+
   const handleLogin = async () => {
     try {
       const res = await axios.post(`${API_URL}/auth/login`, { email, password });
@@ -1364,9 +1500,8 @@ function App() {
         return { pendingDeletion: true };
       } else {
         setToken(res.data.token);
-        setUser(res.data.user);
         localStorage.setItem('token', res.data.token);
-        localStorage.setItem('user', JSON.stringify(res.data.user));
+        await fetchUserProfile(res.data.token);
         await requestNotificationPermission();
         return { pendingDeletion: false };
       }
@@ -1734,6 +1869,46 @@ function App() {
 
   const handleFilterMenuOpen = (event) => setFilterMenuAnchor(event.currentTarget);
   const handleFilterMenuClose = () => setFilterMenuAnchor(null);
+
+  const fetchAvailableUsers = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/messages/users/available`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAvailableUsers(response.data);
+    } catch (error) {
+      console.error('Error fetching available users:', error);
+    }
+  };
+
+  const startNewChat = async (user) => {
+    try {
+      // Send an initial message to start the conversation
+      const messageData = {
+        to: user._id,
+        content: 'Hello! 👋',
+        messageType: 'text'
+      };
+      
+      await axios.post(`${API_URL}/messages`, messageData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Add the user to the current users list
+      setUsers(prev => [...prev, user]);
+      
+      // Select the user to open the chat
+      setSelectedUser(user);
+      setSelectedGroup(null);
+      
+      // Close the dialog
+      setShowNewChatDialog(false);
+      setNewChatSearch('');
+      
+    } catch (error) {
+      console.error('Error starting new chat:', error);
+    }
+  };
 
   const handleOpenProfileDialog = async (userOrGroup) => {
     if (!userOrGroup) return;
@@ -2157,6 +2332,7 @@ function App() {
   if (!token || !user) {
     return (
       <ThemeProvider theme={theme}>
+        <CssBaseline />
         {/* Top Navbar for Login/Register */}
         <Box width="100vw" position="fixed" top={0} left={0}
           sx={{
@@ -2165,7 +2341,7 @@ function App() {
             alignItems: 'center',
             boxShadow: darkMode ? 4 : 2,
             borderRadius: 0,
-            bgcolor: darkMode ? '#000' : '#f5f5f5',
+            bgcolor: 'background.paper',
             zIndex: 1201,
             transition: 'background 0.2s',
           }}
@@ -2173,14 +2349,14 @@ function App() {
           {/* Social X Icon and Text */}
           <Box display="flex" alignItems="center" gap={1} ml={2}>
             <SocialXIcon size={32} color="#25d366" />
-            <Typography variant="h6" fontWeight={700} color={darkMode ? '#fff' : '#000'} sx={{ pl: 1, letterSpacing: 1 }}>
+            <Typography variant="h6" fontWeight={700} color="text.primary" sx={{ pl: 1, letterSpacing: 1 }}>
               Social X
             </Typography>
           </Box>
           {/* About Link */}
           <Box flex={1} />
           <IconButton
-            sx={{ color: darkMode ? '#fff' : '#222', mr: 1 }}
+            sx={{ color: 'text.primary', mr: 1 }}
             onClick={() => setAboutDialogOpen(true)}
           >
             <InfoIcon />
@@ -2191,11 +2367,11 @@ function App() {
               localStorage.setItem('darkMode', JSON.stringify(!prev));
               return !prev;
             });
-          }} sx={{ color: darkMode ? '#fff' : '#222', mr: 1 }}>
+          }} sx={{ color: 'text.primary', mr: 1 }}>
             {darkMode ? <WbSunnyIcon /> : <DarkModeIcon />}
           </IconButton>
           {/* 3-dot Menu */}
-          <IconButton onClick={handleNavMenuOpen} sx={{ color: darkMode ? '#fff' : '#222', mr: 2 }}>
+          <IconButton onClick={handleNavMenuOpen} sx={{ color: 'text.primary', mr: 2 }}>
             <MoreVertIcon />
           </IconButton>
           <Menu
@@ -2217,21 +2393,21 @@ function App() {
           </Menu>
         </Box>
         {/* Main Content */}
-        <Box minHeight="100vh" width="100vw" bgcolor={darkMode ? '#000' : '#e9eaf0'} sx={{ pt: 7, transition: 'background 0.2s' }}>
+        <Box minHeight="100vh" width="100vw" bgcolor="background.default" sx={{ pt: 7, transition: 'background-color 0.5s ease' }}>
           <Container maxWidth="md">
             <Box mt={8} textAlign="center">
               {/* Welcome Screen */}
               <Box display="flex" alignItems="center" justifyContent="center" mb={4}>
                 <SocialXIcon size={80} color="#25d366" />
-                <Typography variant="h2" fontWeight={700} color={darkMode ? '#fff' : '#000'} sx={{ ml: 3, letterSpacing: 2 }}>
+                <Typography variant="h2" fontWeight={700} color="text.primary" sx={{ ml: 3, letterSpacing: 2 }}>
                   Social X
                 </Typography>
               </Box>
               {/* Replace animated welcomeText with static text */}
-              <Typography variant="h4" color={darkMode ? '#fff' : '#222'} sx={{ mb: 3, fontWeight: 500, minHeight: '2.5rem' }}>
+              <Typography variant="h4" color="text.primary" sx={{ mb: 3, fontWeight: 500, minHeight: '2.5rem' }}>
                 Welcome to Social X
               </Typography>
-              <Typography variant="h6" color={darkMode ? '#aaa' : '#666'} sx={{ mb: 6, maxWidth: 600, mx: 'auto' }}>
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 6, maxWidth: 600, mx: 'auto' }}>
                 Connect with friends and family through instant messaging, voice messages, and file sharing. 
                 Experience real-time communication with modern features and beautiful design.
               </Typography>
@@ -2916,29 +3092,54 @@ function App() {
 
   return (
     <ThemeProvider theme={theme}>
+      <CssBaseline />
       {/* Top Navbar with Social X */}
       <Box width="100vw" position="fixed" top={0} left={0}
-        bgcolor={darkMode ? undefined : '#f5f5f5'}
+        bgcolor="background.paper"
         sx={{
           height: 56,
           display: 'flex',
           alignItems: 'center',
           boxShadow: darkMode ? 4 : 2,
           borderRadius: 0,
-          background: darkMode ? '#000' : undefined,
-          // pl: { xs: 7, sm: 7 }, // removed to start icon from left
           transition: 'background 0.2s',
         }}
       >
         <Box display="flex" alignItems="center" gap={1}>
           <SocialXIcon size={32} color="#25d366" style={{ marginLeft: 12 }} />
-          <Typography variant="h6" fontWeight={700} color={darkMode ? '#fff' : '#000'} sx={{ pl: 1, letterSpacing: 1 }}>
+          <Typography variant="h6" fontWeight={700} color="text.primary" sx={{ pl: 1, letterSpacing: 1 }}>
             Social X
           </Typography>
         </Box>
       </Box>
-      <Box display="flex" width="100vw" bgcolor={darkMode ? '#000' : '#e9eaf0'} sx={{ height: 'calc(100vh - 56px)', width: '100vw', minWidth: '100vw', overflow: 'hidden', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', msOverflowStyle: 'none', borderRadius: 0, boxShadow: 2, mt: 7 }} style={{ scrollBehavior: 'auto' }}>
-        <Sidebar user={user} darkMode={darkMode} setDarkMode={setDarkMode} onNav={setNav} nav={nav} onLogout={handleLogout} onProfileEdit={handleProfileEdit} unreadChatsCount={unreadChatsCount} onNotificationSettings={() => setNotificationSettingsDialogOpen(true)} sx={{ width: 56, minWidth: 56, height: '100%', bgcolor: darkMode ? '#000' : '#fff', borderRadius: 0, boxShadow: 0, mt: 0, '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', msOverflowStyle: 'none' }} />
+      <Box display="flex" width="100vw" bgcolor="background.default" sx={{ 
+        height: 'calc(100vh - 56px)', 
+        width: '100vw', 
+        minWidth: '100vw', 
+        overflow: 'hidden', 
+        '::-webkit-scrollbar': { display: 'none' }, 
+        scrollbarWidth: 'none', 
+        msOverflowStyle: 'none', 
+        borderRadius: 0, 
+        boxShadow: 2, 
+        mt: 7, 
+        transition: 'background-color 0.5s ease'
+      }} style={{ scrollBehavior: 'auto' }}>
+        <Sidebar
+          user={user}
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          onNav={setNav}
+          onLogout={handleLogout}
+          onProfileEdit={handleProfileEdit}
+          nav={nav}
+          unreadChatsCount={unreadChatsCount}
+          onNotificationSettings={() => setNotificationSettingsDialogOpen(true)}
+          fetchUserProfile={fetchUserProfile}
+          seasonalTheme={seasonalTheme}
+          setSeasonalTheme={setSeasonalThemeAndPersist}
+          getCurrentSeason={getCurrentSeason}
+        />
         {/* Chat List Panel */}
         {nav === 'status' ? (
           <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
@@ -3006,7 +3207,10 @@ function App() {
                   name="chat-search-bar"
                   placeholder="Search or start a new chat"
                   value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  onChange={e => {
+                    console.log('Search input changed:', e.target.value);
+                    setSearch(e.target.value);
+                  }}
                   autoComplete="new-password"
                   style={{ border: 'none', outline: 'none', background: 'transparent', padding: 8, flex: 1, color: darkMode ? '#fff' : '#222', fontSize: 16 }}
                 />
@@ -3159,65 +3363,104 @@ function App() {
             <Typography variant="subtitle2" color="textSecondary" mb={1}>All Chats</Typography>
             <Box flex={1} sx={{ overflowY: 'auto', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
               <List sx={{ flex: 1 }}>
-                {unpinnedChats.map(u => {
-                  const unreadCount = unreadCounts[u._id] || 0;
-                  const isOnline = getUserStatus(u).status === 'online';
-                  const lastMsgObj = lastMessages[u._id];
+                {unpinnedChats.length > 0 ? (
+                  unpinnedChats.map(u => {
+                    const unreadCount = unreadCounts[u._id] || 0;
+                    const isOnline = getUserStatus(u).status === 'online';
+                    const lastMsgObj = lastMessages[u._id];
 
-                  let fileData = null;
-                  let lastMsgContent = (lastMsgObj && typeof lastMsgObj === 'object' ? lastMsgObj.content : lastMsgObj) || '';
-                  try {
-                    const parsed = JSON.parse(lastMsgContent);
-                    if (parsed && parsed.file) {
-                      fileData = parsed;
-                      if (fileData.type === 'image') lastMsgContent = 'Image';
-                      else if (fileData.type === 'video') lastMsgContent = 'Video';
-                      else if (fileData.type === 'audio') lastMsgContent = 'Voice message';
-                      else lastMsgContent = fileData.name || 'File';
-                    }
-                  } catch {}
+                    let fileData = null;
+                    let lastMsgContent = (lastMsgObj && typeof lastMsgObj === 'object' ? lastMsgObj.content : lastMsgObj) || '';
+                    try {
+                      const parsed = JSON.parse(lastMsgContent);
+                      if (parsed && parsed.file) {
+                        fileData = parsed;
+                        if (fileData.type === 'image') lastMsgContent = 'Image';
+                        else if (fileData.type === 'video') lastMsgContent = 'Video';
+                        else if (fileData.type === 'audio') lastMsgContent = 'Voice message';
+                        else lastMsgContent = fileData.name || 'File';
+                      }
+                    } catch {}
 
-                  const lastMsgTimestamp = (lastMsgObj && typeof lastMsgObj === 'object' ? lastMsgObj.createdAt : null);
-                  return (
-                    <Tooltip title={lastMsgContent} placement="right">
-                      <ListItem button key={u._id} selected={selectedUser?._id === u._id} onClick={() => { setSelectedUser(u); setSelectedGroup(null); }} sx={{ borderRadius: 2, mb: 1 }}>
-                        <Box position="relative" display="inline-block" mr={1}>
-                          <Avatar src={u.avatar} />
-                          {isOnline && (
-                            <Box position="absolute" bottom={2} right={2} width={8} height={8} bgcolor="#25d366" borderRadius="50%" border={`2px solid ${darkMode ? '#000' : '#fff'}`} />
-                          )}
-                          {(unreadCount > 0 && (!isOnline || selectedUser?._id !== u._id)) && (
-                            <Box position="absolute" top={-2} right={-2} bgcolor="#25d366" color="#fff" borderRadius="50%" minWidth={18} height={18} display="flex" alignItems="center" justifyContent="center" fontSize={12} fontWeight={700} px={0.5} boxShadow={2}>
-                              {unreadCount}
-                            </Box>
-                          )}
-                        </Box>
-                        <Box flex={1} minWidth={0} mr={1.5}>
-                          <Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {u.username}
-                          </Typography>
-                          {typingUsers.includes(u._id) ? (
-                            <Typography variant="body2" sx={{ fontStyle: 'italic', fontSize: 13, color: '#25d366' }}>typing...</Typography>
-                          ) : (
-                            <Box display="flex" alignItems="center">
-                              {fileData && fileData.type === 'image' && <ImageIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
-                              {fileData && fileData.type === 'video' && <VideocamIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
-                              {fileData && fileData.type === 'audio' && <AudiotrackIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
-                              {fileData && !['image', 'video', 'audio'].includes(fileData.type) && <DescriptionIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
-                              <Typography variant="body2" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {lastMsgContent}
-                              </Typography>
-                            </Box>
-                          )}
-                        </Box>
-                        {lastMsgTimestamp && <Typography variant="caption" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main' }}>
-                          {new Date(lastMsgTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Typography>}
-                        <IconButton onClick={e => { e.stopPropagation(); handleOpenProfileDialog(u); }}><PersonIcon /></IconButton>
-                      </ListItem>
-                    </Tooltip>
-                  );
-                })}
+                    const lastMsgTimestamp = (lastMsgObj && typeof lastMsgObj === 'object' ? lastMsgObj.createdAt : null);
+                    return (
+                      <Tooltip title={lastMsgContent} placement="right">
+                        <ListItem button key={u._id} selected={selectedUser?._id === u._id} onClick={() => { setSelectedUser(u); setSelectedGroup(null); }} sx={{ borderRadius: 2, mb: 1 }}>
+                          <Box position="relative" display="inline-block" mr={1}>
+                            <Avatar src={u.avatar} />
+                            {isOnline && (
+                              <Box position="absolute" bottom={2} right={2} width={8} height={8} bgcolor="#25d366" borderRadius="50%" border={`2px solid ${darkMode ? '#000' : '#fff'}`} />
+                            )}
+                            {(unreadCount > 0 && (!isOnline || selectedUser?._id !== u._id)) && (
+                              <Box position="absolute" top={-2} right={-2} bgcolor="#25d366" color="#fff" borderRadius="50%" minWidth={18} height={18} display="flex" alignItems="center" justifyContent="center" fontSize={12} fontWeight={700} px={0.5} boxShadow={2}>
+                                {unreadCount}
+                              </Box>
+                            )}
+                          </Box>
+                          <Box flex={1} minWidth={0} mr={1.5}>
+                            <Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {u.username}
+                            </Typography>
+                            {typingUsers.includes(u._id) ? (
+                              <Typography variant="body2" sx={{ fontStyle: 'italic', fontSize: 13, color: '#25d366' }}>typing...</Typography>
+                            ) : (
+                              <Box display="flex" alignItems="center">
+                                {fileData && fileData.type === 'image' && <ImageIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
+                                {fileData && fileData.type === 'video' && <VideocamIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
+                                {fileData && fileData.type === 'audio' && <AudiotrackIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
+                                {fileData && !['image', 'video', 'audio'].includes(fileData.type) && <DescriptionIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
+                                <Typography variant="body2" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {lastMsgContent}
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                          {lastMsgTimestamp && <Typography variant="caption" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main' }}>
+                            {new Date(lastMsgTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </Typography>}
+                          <IconButton onClick={e => { e.stopPropagation(); handleOpenProfileDialog(u); }}><PersonIcon /></IconButton>
+                        </ListItem>
+                      </Tooltip>
+                    );
+                  })
+                ) : search ? (
+                  <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={4}>
+                    <SearchIcon sx={{ fontSize: 48, color: darkMode ? '#555' : '#ccc', mb: 2 }} />
+                    <Typography variant="body1" color="textSecondary" align="center">
+                      No users found for "{search}"
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary" align="center" sx={{ mt: 1 }}>
+                      Try searching with a different term
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={4}>
+                    <PersonIcon sx={{ fontSize: 48, color: darkMode ? '#555' : '#ccc', mb: 2 }} />
+                    <Typography variant="body1" color="textSecondary" align="center">
+                      No conversations yet
+                    </Typography>
+                    <Typography variant="body2" color="textSecondary" align="center" sx={{ mt: 1, mb: 2 }}>
+                      Start a new conversation to begin chatting
+                    </Typography>
+                    <Button
+                      variant="contained"
+                      sx={{ 
+                        borderRadius: 2,
+                        bgcolor: '#25d366',
+                        '&:hover': {
+                          bgcolor: '#1da851'
+                        }
+                      }}
+                      onClick={() => {
+                        fetchAvailableUsers();
+                        setShowNewChatDialog(true);
+                      }}
+                      startIcon={<AddIcon />}
+                    >
+                      New Chat
+                    </Button>
+                  </Box>
+                )}
               </List>
             </Box>
           </Box>
@@ -3995,6 +4238,114 @@ function App() {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setDocxViewerOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+        {/* New Chat Dialog */}
+        <Dialog 
+          open={showNewChatDialog} 
+          onClose={() => setShowNewChatDialog(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+              bgcolor: darkMode ? '#111' : '#fff',
+              boxShadow: 8
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 1,
+            borderBottom: `1px solid ${darkMode ? '#333' : '#eee'}`,
+            pb: 2
+          }}>
+            <AddIcon sx={{ color: '#25d366' }} />
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              New Chat
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <Box sx={{ mb: 2 }}>
+              <TextField
+                fullWidth
+                placeholder="Search users..."
+                value={newChatSearch}
+                onChange={(e) => setNewChatSearch(e.target.value)}
+                variant="outlined"
+                size="small"
+                InputProps={{
+                  startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+                  sx: { borderRadius: 2 }
+                }}
+              />
+            </Box>
+            <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+              {availableUsers
+                .filter(u => 
+                  u.username && 
+                  u.username.toLowerCase().includes(newChatSearch.toLowerCase())
+                )
+                .map(user => (
+                  <ListItem
+                    key={user._id}
+                    button
+                    onClick={() => startNewChat(user)}
+                    sx={{
+                      borderRadius: 2,
+                      mb: 1,
+                      '&:hover': {
+                        bgcolor: darkMode ? '#222' : '#f5f5f5'
+                      }
+                    }}
+                  >
+                    <Avatar src={user.avatar} sx={{ mr: 2 }}>
+                      {!user.avatar && user.username ? user.username[0] : null}
+                    </Avatar>
+                    <ListItemText
+                      primary={user.username}
+                      secondary={user.email}
+                      primaryTypographyProps={{
+                        fontWeight: 600,
+                        color: darkMode ? '#fff' : 'inherit'
+                      }}
+                      secondaryTypographyProps={{
+                        color: 'text.secondary'
+                      }}
+                    />
+                  </ListItem>
+                ))}
+              {availableUsers.filter(u => 
+                u.username && 
+                u.username.toLowerCase().includes(newChatSearch.toLowerCase())
+              ).length === 0 && (
+                <Box display="flex" flexDirection="column" alignItems="center" py={4}>
+                  <PersonIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="body1" color="text.secondary" align="center">
+                    {newChatSearch ? 'No users found' : 'No users available'}
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions sx={{ p: 2, pt: 0 }}>
+            <Button 
+              onClick={() => setShowNewChatDialog(false)}
+              variant="outlined"
+              sx={{ 
+                borderRadius: 2,
+                borderColor: '#25d366',
+                color: '#25d366',
+                '&:hover': {
+                  borderColor: '#1da851',
+                  color: '#1da851',
+                  bgcolor: 'rgba(37, 211, 102, 0.04)'
+                }
+              }}
+            >
+              Cancel
+            </Button>
           </DialogActions>
         </Dialog>
       </Box>

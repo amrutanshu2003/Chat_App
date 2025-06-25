@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Box, IconButton, Avatar, Tooltip, Typography, Divider, ListItemIcon } from '@mui/material';
+import React, { useState, useEffect, useRef } from 'react';
+import { Box, IconButton, Avatar, Tooltip, Typography, Divider, ListItemIcon, Drawer, List, ListItem, ListItemText, Dialog, DialogTitle, DialogContent, DialogActions, Button, Tabs, Tab } from '@mui/material';
 import ChatOutlinedIcon from '@mui/icons-material/ChatOutlined';
 import CallOutlinedIcon from '@mui/icons-material/CallOutlined';
 import DonutLargeOutlinedIcon from '@mui/icons-material/DonutLargeOutlined';
@@ -24,12 +24,7 @@ import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
 import { useTheme } from '@mui/material/styles';
 import PhotoCameraOutlinedIcon from '@mui/icons-material/PhotoCameraOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
-import Dialog from '@mui/material/Dialog';
-import DialogContent from '@mui/material/DialogContent';
 import ImageCropDialog from './ImageCropDialog';
-import DialogTitle from '@mui/material/DialogTitle';
-import DialogActions from '@mui/material/DialogActions';
-import Button from '@mui/material/Button';
 import Slider from '@mui/material/Slider';
 import SocialXIcon from './SocialXIcon';
 import TextField from '@mui/material/TextField';
@@ -37,6 +32,35 @@ import CircularProgress from '@mui/material/CircularProgress';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import Select from '@mui/material/Select';
+import { useTranslation } from 'react-i18next';
+import i18n from './i18n';
+import InputBase from '@mui/material/InputBase';
+import SearchIcon from '@mui/icons-material/Search';
+import AddIcon from '@mui/icons-material/Add';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import SettingsIcon from '@mui/icons-material/Settings';
+import StarIcon from '@mui/icons-material/Star';
+import Skeleton from '@mui/material/Skeleton';
+import Fade from '@mui/material/Fade';
+import { styled } from '@mui/material/styles';
+import SeasonalThemeSelector from './SeasonalThemeSelector';
+import AdvancedPersonalization from './AdvancedPersonalization';
+import MoodThemeSelector from './MoodThemeSelector';
+
+// TabPanel component
+function TabPanel({ children, value, index, ...other }) {
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`personalization-tabpanel-${index}`}
+      aria-labelledby={`personalization-tab-${index}`}
+      {...other}
+    >
+      {value === index && <Box>{children}</Box>}
+    </div>
+  );
+}
 
 const getFullUrl = (url) => {
   if (!url) return '';
@@ -44,7 +68,23 @@ const getFullUrl = (url) => {
   return `http://localhost:5000${url}`;
 };
 
-const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, nav, unreadChatsCount, onNotificationSettings, onDeleteAccount }) => {
+// Styled chat item for hover/scale effect
+const ChatItem = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  padding: theme.spacing(1.5, 2),
+  borderRadius: theme.shape.borderRadius * 2,
+  margin: theme.spacing(0.5, 1),
+  transition: 'background 0.2s, transform 0.2s',
+  cursor: 'pointer',
+  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+  '&:hover': {
+    background: 'rgba(37,211,102,0.08)',
+    transform: 'scale(1.025)',
+  },
+}));
+
+const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, nav, unreadChatsCount, onNotificationSettings, onDeleteAccount, fetchUserProfile, seasonalTheme = 'auto', setSeasonalTheme = () => {}, getCurrentSeason = () => 'spring' }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [editOpen, setEditOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -54,7 +94,8 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
   const theme = useTheme();
   const fileInputRef = React.useRef(null);
   const [generalDialogOpen, setGeneralDialogOpen] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('English');
+  const { t } = useTranslation();
+  const [selectedLanguage, setSelectedLanguage] = useState(i18n.language === 'hi' ? 'Hindi' : 'English');
   const [fontSize, setFontSize] = useState(16);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
@@ -75,6 +116,11 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
     const stored = localStorage.getItem('applock_timeout');
     return stored ? parseInt(stored, 10) : 2000;
   });
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [chatTab, setChatTab] = useState(0);
+  const [chatSearch, setChatSearch] = useState('');
+  const [personalizationDialogOpen, setPersonalizationDialogOpen] = useState(false);
+  const [personalizationTab, setPersonalizationTab] = useState(0);
 
   const handleAvatarClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -295,7 +341,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
         </Tooltip>
       </Box>
       {/* Avatar slightly above the bottom */}
-      <Box sx={{ p: -1, width: '100%', mb: 3 }}>
+      <Box sx={{ p: -1, width: '100%', mb: -1 }}>
         <Tooltip title="Profile" placement="right">
           <Box display="flex" alignItems="center" sx={{ width: expanded ? '100%' : 'auto', justifyContent: expanded ? 'flex-start' : 'center', mt: 2 }}>
             <IconButton onClick={handleAvatarClick} sx={{ p: 0, borderRadius: '50%' }}>
@@ -408,7 +454,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           <ListItemIcon><AccountCircleOutlinedIcon /></ListItemIcon>
           Account
         </MenuItem>
-        <MenuItem onClick={() => { console.log('Chat'); }} sx={{ mb: 1 }}>
+        <MenuItem onClick={() => setChatMenuOpen(true)} sx={{ mb: 1 }}>
           <ListItemIcon><ChatOutlinedIcon /></ListItemIcon>
           Chat
         </MenuItem>
@@ -416,7 +462,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           <ListItemIcon><NotificationsNoneOutlinedIcon /></ListItemIcon>
           Notification
         </MenuItem>
-        <MenuItem onClick={() => { console.log('Personalization'); }} sx={{ mb: 1 }}>
+        <MenuItem onClick={() => { setPersonalizationDialogOpen(true); }} sx={{ mb: 1 }}>
           <ListItemIcon><PaletteOutlinedIcon /></ListItemIcon>
           Personalization
         </MenuItem>
@@ -445,12 +491,15 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
         onCropComplete={handleCropComplete}
       />
       <Dialog open={generalDialogOpen} onClose={() => setGeneralDialogOpen(false)}>
-        <DialogTitle>General Settings</DialogTitle>
+        <DialogTitle>{t('General Settings')}</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" sx={{ mb: 2 }}>Language</Typography>
+          <Typography variant="subtitle1" sx={{ mb: 2 }}>{t('Language')}</Typography>
           <Button
             variant={selectedLanguage === 'English' ? 'contained' : 'outlined'}
-            onClick={() => setSelectedLanguage('English')}
+            onClick={() => {
+              setSelectedLanguage('English');
+              i18n.changeLanguage('en');
+            }}
             sx={{
               mr: 1,
               color: selectedLanguage === 'English' ? '#fff' : '#25d366',
@@ -459,11 +508,14 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
               '&:hover': { backgroundColor: '#25d366', color: '#fff' }
             }}
           >
-            English
+            {t('ENGLISH')}
           </Button>
           <Button
             variant={selectedLanguage === 'Hindi' ? 'contained' : 'outlined'}
-            onClick={() => setSelectedLanguage('Hindi')}
+            onClick={() => {
+              setSelectedLanguage('Hindi');
+              i18n.changeLanguage('hi');
+            }}
             sx={{
               color: selectedLanguage === 'Hindi' ? '#fff' : '#25d366',
               borderColor: '#25d366',
@@ -471,9 +523,9 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
               '&:hover': { backgroundColor: '#25d366', color: '#fff' }
             }}
           >
-            Hindi
+            {t('HINDI')}
           </Button>
-          <Typography variant="subtitle1" sx={{ mt: 3, mb: 1 }}>Font Size</Typography>
+          <Typography variant="subtitle1" sx={{ mt: 3, mb: 1 }}>{t('Font Size')}</Typography>
           <Slider
             value={fontSize}
             min={12}
@@ -489,14 +541,14 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
               '& .MuiSlider-rail': { backgroundColor: '#b7f5d8' }
             }}
           />
-          <Typography variant="body2">Preview: <span style={{ fontSize }}>{'This is a preview.'}</span></Typography>
+          <Typography variant="body2">{t('Preview')} <span style={{ fontSize }}>{t('Preview: This is a preview.')}</span></Typography>
         </DialogContent>
         <DialogActions>
           <Button
             onClick={() => setGeneralDialogOpen(false)}
             sx={{ color: '#25d366' }}
           >
-            Close
+            {t('CLOSE')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -523,7 +575,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           </Button>
           <Typography variant="subtitle2" sx={{ alignSelf: 'flex-start', mt: 1, mb: 0.5 }}>Security</Typography>
           <Typography variant="body2" sx={{ alignSelf: 'flex-start', mb: 1 }}>
-            Password last changed: 10 days ago
+            Password last changed: {user?.passwordChangedAt ? new Date(user.passwordChangedAt).toLocaleString() : 'N/A'}
           </Typography>
           <Divider sx={{ width: '100%', my: 2, borderColor: 'rgba(255,255,255,0.12)' }} />
           <Box display="flex" alignItems="center" justifyContent="space-between" width="100%" mb={1}>
@@ -679,6 +731,11 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
                   setOldPassword('');
                   setNewPassword('');
                   setConfirmPassword('');
+                  if (user) {
+                    user.passwordChangedAt = new Date().toISOString();
+                    localStorage.setItem('user', JSON.stringify(user));
+                  }
+                  await fetchUserProfile();
                   setTimeout(() => setChangePasswordDialogOpen(false), 1500);
                 }
               } catch (err) {
@@ -860,6 +917,212 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
             </form>
           </Box>
         </DialogContent>
+      </Dialog>
+      <Dialog
+        open={chatMenuOpen}
+        onClose={() => setChatMenuOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            backdropFilter: 'blur(16px)',
+            bgcolor: 'rgba(30,30,30,0.85)',
+            borderRadius: 4,
+            boxShadow: 8,
+            overflow: 'hidden',
+            transition: 'all 0.3s cubic-bezier(.4,2,.6,1)',
+          }
+        }}
+        TransitionComponent={Fade}
+        transitionDuration={400}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'transparent', borderBottom: 'none', pb: 0 }}>
+          <SearchIcon sx={{ mr: 1, color: '#25d366' }} />
+          <InputBase
+            placeholder="Search chats..."
+            value={chatSearch}
+            onChange={e => setChatSearch(e.target.value)}
+            sx={{ flex: 1, color: '#fff', fontSize: 16, bgcolor: 'rgba(255,255,255,0.05)', px: 1.5, borderRadius: 2 }}
+            autoFocus
+          />
+        </DialogTitle>
+        <Tabs
+          value={chatTab}
+          onChange={(_, v) => setChatTab(v)}
+          variant="fullWidth"
+          TabIndicatorProps={{ style: { backgroundColor: '#25d366', height: 4, borderRadius: 2 } }}
+          textColor="inherit"
+          sx={{
+            bgcolor: 'rgba(255,255,255,0.04)',
+            borderRadius: 2,
+            mt: 1,
+            mb: 0.5,
+            '& .MuiTab-root': {
+              color: '#aaa',
+              fontWeight: 600,
+              fontSize: 16,
+              transition: 'color 0.2s',
+            },
+            '& .Mui-selected': {
+              color: '#25d366',
+            },
+          }}
+        >
+          <Tab label="All" />
+          <Tab label="Unread" />
+          <Tab label="Groups" />
+          <Tab label={<StarIcon fontSize="small" sx={{ mb: '-2px' }} />} />
+        </Tabs>
+        <DialogContent sx={{ p: 0, minHeight: 320, maxHeight: 400, overflowY: 'auto', bgcolor: 'transparent' }}>
+          {/* Loading skeletons (simulate loading state) */}
+          {false ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <ChatItem key={i}>
+                <Skeleton variant="circular" width={40} height={40} sx={{ mr: 2, bgcolor: 'grey.800' }} />
+                <Box flex={1}>
+                  <Skeleton width="60%" height={18} sx={{ bgcolor: 'grey.800', mb: 1 }} />
+                  <Skeleton width="80%" height={14} sx={{ bgcolor: 'grey.800' }} />
+                </Box>
+                <Skeleton variant="rectangular" width={24} height={24} sx={{ borderRadius: 2, bgcolor: 'grey.800', ml: 2 }} />
+              </ChatItem>
+            ))
+          ) : (
+            // Mock chat data for demo
+            [
+              { name: 'John Doe', lastMsg: 'See you soon!', time: '2m ago', unread: 2, pinned: true, online: true, avatar: '', typing: false },
+              { name: 'Family Group', lastMsg: 'Dinner at 8?', time: '10m ago', unread: 0, pinned: false, online: false, avatar: '', typing: false },
+              { name: 'Jane Smith', lastMsg: 'Typing...', time: 'now', unread: 1, pinned: false, online: true, avatar: '', typing: true },
+              { name: 'Work', lastMsg: 'Project update sent.', time: '1h ago', unread: 0, pinned: true, online: false, avatar: '', typing: false },
+              { name: 'Alex', lastMsg: '👍', time: '3h ago', unread: 0, pinned: false, online: false, avatar: '', typing: false },
+            ].map((chat, i) => (
+              <ChatItem key={i}>
+                <Badge
+                  color={chat.online ? 'success' : 'default'}
+                  variant={chat.online ? 'dot' : undefined}
+                  overlap="circular"
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  sx={{ mr: 2 }}
+                >
+                  <Avatar sx={{ width: 40, height: 40, bgcolor: chat.pinned ? '#25d366' : '#222' }}>{chat.name[0]}</Avatar>
+                </Badge>
+                <Box flex={1}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Typography fontWeight={600} color="#fff">{chat.name}</Typography>
+                    {chat.pinned && <StarIcon fontSize="small" sx={{ color: '#25d366', ml: 0.5 }} />}
+                  </Box>
+                  <Typography variant="body2" color={chat.typing ? '#25d366' : 'grey.400'} fontStyle={chat.typing ? 'italic' : 'normal'}>
+                    {chat.typing ? 'Typing...' : chat.lastMsg}
+                  </Typography>
+                </Box>
+                <Box display="flex" flexDirection="column" alignItems="flex-end" minWidth={48}>
+                  <Typography variant="caption" color="#aaa" sx={{ mb: 0.5 }}>{chat.time}</Typography>
+                  <Badge
+                    badgeContent={chat.unread}
+                    color="primary"
+                    sx={{
+                      '& .MuiBadge-badge': {
+                        animation: chat.unread ? 'pulse 1s infinite' : 'none',
+                        bgcolor: chat.unread ? '#25d366' : 'transparent',
+                        color: chat.unread ? '#fff' : 'transparent',
+                        fontWeight: 700,
+                        minWidth: 22,
+                        height: 22,
+                        fontSize: 13,
+                        boxShadow: chat.unread ? '0 0 8px #25d36655' : 'none',
+                      }
+                    }}
+                  />
+                </Box>
+              </ChatItem>
+            ))
+          )}
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'space-between', px: 2, pb: 2, bgcolor: 'transparent' }}>
+          <Button startIcon={<AddIcon />} sx={{ color: '#25d366', fontWeight: 600, borderRadius: 2, px: 2, py: 1, bgcolor: 'rgba(37,211,102,0.08)', '&:hover': { bgcolor: '#25d366', color: '#fff' } }} onClick={() => alert('New Chat')}>New Chat</Button>
+          <Button startIcon={<GroupAddIcon />} sx={{ color: '#25d366', fontWeight: 600, borderRadius: 2, px: 2, py: 1, bgcolor: 'rgba(37,211,102,0.08)', '&:hover': { bgcolor: '#25d366', color: '#fff' } }} onClick={() => alert('New Group')}>New Group</Button>
+          <IconButton sx={{ color: '#25d366', bgcolor: 'rgba(37,211,102,0.08)', borderRadius: 2, '&:hover': { bgcolor: '#25d366', color: '#fff' } }} onClick={() => alert('Chat Settings')}><SettingsIcon /></IconButton>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Personalization Dialog */}
+      <Dialog
+        open={personalizationDialogOpen}
+        onClose={() => setPersonalizationDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: darkMode ? '#222' : '#fff',
+            color: darkMode ? '#fff' : '#222',
+            borderRadius: 3,
+            boxShadow: 8
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 2,
+          borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
+        }}>
+          <PaletteOutlinedIcon sx={{ color: '#25d366' }} />
+          <Typography variant="h6" fontWeight={700}>
+            Personalization
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Tabs
+            value={personalizationTab}
+            onChange={(_, v) => setPersonalizationTab(v)}
+            variant="fullWidth"
+            TabIndicatorProps={{ style: { backgroundColor: '#25d366', height: 4, borderRadius: 2 } }}
+            textColor="inherit"
+            sx={{
+              bgcolor: 'rgba(255,255,255,0.04)',
+              borderRadius: 2,
+              mt: 1,
+              mb: 0.5,
+              '& .MuiTab-root': {
+                color: '#aaa',
+                fontWeight: 600,
+                fontSize: 16,
+                transition: 'color 0.2s',
+              },
+              '& .Mui-selected': {
+                color: '#25d366',
+              },
+            }}
+          >
+            <Tab label="Seasonal" />
+            <Tab label="Advanced" />
+            <Tab label="Mood" />
+          </Tabs>
+          <TabPanel value={personalizationTab} index={0}>
+            <SeasonalThemeSelector 
+              seasonalTheme={seasonalTheme}
+              setSeasonalTheme={setSeasonalTheme}
+              getCurrentSeason={getCurrentSeason}
+            />
+          </TabPanel>
+          <TabPanel value={personalizationTab} index={1}>
+            <AdvancedPersonalization />
+          </TabPanel>
+          <TabPanel value={personalizationTab} index={2}>
+            <MoodThemeSelector />
+          </TabPanel>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, borderTop: `1px solid ${darkMode ? '#444' : '#e0e0e0'}` }}>
+          <Button 
+            onClick={() => setPersonalizationDialogOpen(false)}
+            variant="contained"
+            sx={{ 
+              bgcolor: '#25d366',
+              '&:hover': { bgcolor: '#1ea952' }
+            }}
+          >
+            Close
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

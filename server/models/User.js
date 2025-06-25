@@ -29,6 +29,10 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  passwordChangedAt: {
+    type: Date,
+    default: Date.now
+  },
   createdAt: {
     type: Date,
     default: Date.now

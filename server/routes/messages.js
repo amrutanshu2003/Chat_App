@@ -148,8 +148,53 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// Get all users (for chat list)
+// Get users with conversations (for chat list)
 router.get('/users/all', auth, async (req, res) => {
+  try {
+    // Find all messages where the current user is involved (either sender or receiver)
+    const messages = await Message.find({
+      $or: [
+        { from: req.user.id },
+        { to: req.user.id }
+      ]
+    }).populate('from to', 'username email avatar about lastSeen');
+
+    // Extract unique user IDs from conversations
+    const conversationUserIds = new Set();
+    
+    messages.forEach(message => {
+      if (message.from && message.from._id.toString() !== req.user.id) {
+        conversationUserIds.add(message.from._id.toString());
+      }
+      if (message.to && message.to._id.toString() !== req.user.id) {
+        conversationUserIds.add(message.to._id.toString());
+      }
+    });
+
+    // Get user details for users with conversations
+    const users = await User.find({ 
+      _id: { $in: Array.from(conversationUserIds) }
+    }).select('-password');
+
+    // Format user list
+    const userList = users.map(u => ({
+      _id: u._id,
+      username: u.username,
+      email: u.email,
+      avatar: u.avatar,
+      about: u.about,
+      lastSeen: u.lastSeen
+    }));
+
+    res.json(userList);
+  } catch (err) {
+    console.error('Error fetching users with conversations:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get all users (for starting new conversations)
+router.get('/users/available', auth, async (req, res) => {
   try {
     const users = await User.find({ _id: { $ne: req.user.id } }).select('-password');
     // Only return id, username, email, avatar

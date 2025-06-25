@@ -17,10 +17,12 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "form-data": "^4.0.3",
+    "i18next": "^25.2.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.4.1",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.10.1",
+    "react-i18next": "^15.5.3",
     "socket.io": "^4.7.5",
     "twilio": "^4.23.0"
   },
