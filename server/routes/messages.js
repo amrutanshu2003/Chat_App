@@ -161,7 +161,7 @@ router.get('/:id', auth, async (req, res) => {
 router.get('/users/all', auth, async (req, res) => {
   try {
     // Get all contacts for the current user
-    const user = await User.findById(req.user.userId).populate('contacts', 'username email avatar about lastSeen');
+    const user = await User.findById(req.user.userId).populate('contacts', 'username email avatar about lastSeen deletionScheduled deletionDate');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     // Format user list
@@ -171,7 +171,9 @@ router.get('/users/all', auth, async (req, res) => {
       email: u.email,
       avatar: u.avatar,
       about: u.about,
-      lastSeen: u.lastSeen
+      lastSeen: u.lastSeen,
+      deletionScheduled: u.deletionScheduled,
+      deletionDate: u.deletionDate
     }));
 
     res.json(userList);
@@ -191,7 +193,7 @@ router.get('/users/available', auth, async (req, res) => {
         username: { $regex: q, $options: 'i' },
         _id: { $ne: req.user.userId } // Exclude current user
       },
-      'username email avatar about lastSeen'
+      'username email avatar about lastSeen deletionScheduled deletionDate'
     );
     res.json(users);
   } catch (err) {
@@ -507,6 +509,22 @@ router.post('/:messageId/reactions', auth, async (req, res) => {
     res.json(message.reactions);
   } catch (err) {
     console.error('Error adding reaction:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Permanently delete a user from all contacts (but not from the database)
+router.delete('/users/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Remove this user from all other users' contacts
+    await User.updateMany(
+      { contacts: id },
+      { $pull: { contacts: id } }
+    );
+    // Do NOT delete the user from the database
+    res.json({ message: 'User removed from all contacts (chat list).' });
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });

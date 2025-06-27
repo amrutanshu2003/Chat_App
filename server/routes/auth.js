@@ -509,7 +509,14 @@ router.delete('/delete-account', async (req, res) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId);
+    // Support deleting another user if userId is provided in body (for chat trash)
+    const { userId } = req.body || {};
+    let user;
+    if (userId) {
+      user = await User.findById(userId);
+    } else {
+      user = await User.findById(decoded.userId);
+    }
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     // Schedule deletion for 7 days from now
     user.deletionScheduled = true;
@@ -528,7 +535,14 @@ router.post('/cancel-delete-account', async (req, res) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId);
+    // Support restoring another user if userId is provided in body (for chat trash)
+    const { userId } = req.body || {};
+    let user;
+    if (userId) {
+      user = await User.findById(userId);
+    } else {
+      user = await User.findById(decoded.userId);
+    }
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     user.deletionScheduled = false;
     user.deletionDate = null;

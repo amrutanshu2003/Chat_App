@@ -71,6 +71,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import DialpadIcon from '@mui/icons-material/Dialpad';
 import NewCallPanel from './NewCallPanel';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import UndoIcon from '@mui/icons-material/Undo';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
@@ -228,6 +229,19 @@ function App() {
   const [showNewCallPanel, setShowNewCallPanel] = useState(false);
   const [myStatusAvatarHover, setMyStatusAvatarHover] = useState(false);
   const [shareStatusDialogOpen, setShareStatusDialogOpen] = useState(false);
+  // Add at the top, after other useState hooks
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      const stored = localStorage.getItem('favorites');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // State for permanent delete dialog in Trash
+  const [permanentDeleteDialogOpen, setPermanentDeleteDialogOpen] = useState(false);
+  const [userToPermanentlyDelete, setUserToPermanentlyDelete] = useState(null);
 
   // Example contacts data (replace with real data as needed)
   const contacts = [
@@ -257,6 +271,8 @@ function App() {
       console.log('Skipping user with invalid username:', u);
       return false;
     }
+    // Exclude users scheduled for deletion unless in trash view
+    if (nav !== 'trash' && u.deletionScheduled) return false;
     return u.username.toLowerCase().includes(search.toLowerCase());
   });
 
@@ -2520,10 +2536,17 @@ function App() {
     }
   }, [nav, token]);
 
-  // Custom navigation handler to close message box when navigating to calls or status
+  // Custom navigation handler to close message box when navigating to certain sidebar sections
   const handleNav = (navTarget) => {
     setNav(navTarget);
-    if (navTarget === 'calls' || navTarget === 'status') {
+    if ([
+      'calls',
+      'status',
+      'favorite',
+      'trash',
+      'settings',
+      'profile',
+    ].includes(navTarget)) {
       setSelectedUser(null);
       setSelectedGroup(null);
       setMessages([]);
@@ -2531,6 +2554,22 @@ function App() {
       setMessage('');
     }
   };
+
+  // Helper to toggle favorite
+  const toggleFavorite = (userId) => {
+    setFavorites((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  // Filter chat list based on nav
+  let chatListToShow = search.trim() ? searchResults : mergedSearchResults;
+  if (nav === 'favorite') {
+    chatListToShow = chatListToShow.filter((u) => favorites.includes(u._id));
+  }
+  if (nav === 'trash') {
+    chatListToShow = users.filter(u => u.deletionScheduled);
+  }
 
   if (isLocked) {
     return <LockScreen onUnlock={() => setIsLocked(false)} />;
@@ -3591,6 +3630,62 @@ function App() {
               />
             )}
           </Box>
+        ) : nav === 'trash' ? (
+          <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative' }}>
+            <Typography variant="h5" fontWeight={900} sx={{ color: darkMode ? '#fff' : '#222', letterSpacing: 1, mb: 2 }}>Trash</Typography>
+            {chatListToShow.length === 0 ? (
+              <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={6}>
+                <DeleteOutlineIcon sx={{ fontSize: 48, color: darkMode ? '#555' : '#ccc', mb: 2 }} />
+                <Typography variant="body1" color="textSecondary" align="center">
+                  No deleted users
+                </Typography>
+                <Typography variant="body2" color="textSecondary" align="center" sx={{ mt: 1 }}>
+                  Deleted users will appear here for 7 days before permanent removal.
+                </Typography>
+              </Box>
+            ) : (
+              <List sx={{ width: '100%', maxWidth: 400, bgcolor: darkMode ? '#000' : '#fff', borderRadius: 2, mb: 2 }}>
+                {chatListToShow.map(u => (
+                  <ListItem key={u._id} sx={{ borderRadius: 2, mb: 1, bgcolor: darkMode ? '#111' : '#f5f5f5', '&:hover': { bgcolor: darkMode ? '#222' : '#eee' } }}>
+                    <Avatar src={u.avatar} sx={{ mr: 2 }}>{!u.avatar && u.username ? u.username[0] : null}</Avatar>
+                    <ListItemText
+                      primary={<Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit' }}>{u.username}</Typography>}
+                      secondary={<Typography variant="body2" color="textSecondary">Scheduled for deletion: {u.deletionDate ? new Date(u.deletionDate).toLocaleString() : ''}</Typography>}
+                    />
+                    <Tooltip title="Restore User">
+                      <IconButton
+                        onClick={async () => {
+                          // Restore locally
+                          setUsers(prev => prev.map(user => user._id === u._id ? { ...user, deletionScheduled: false, deletionDate: null } : user));
+                          // Optionally, call backend to restore
+                          try {
+                            await axios.post(`${API_URL}/auth/cancel-delete-account`, { userId: u._id }, { headers: { Authorization: `Bearer ${token}` } });
+                          } catch (err) {
+                            setSnackbar({ message: 'Failed to restore user.', severity: 'error' });
+                          }
+                        }}
+                        color="primary"
+                        sx={{ color: '#25d366' }}
+                      >
+                        <UndoIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Permanently Delete">
+                      <IconButton
+                        onClick={() => {
+                          setUserToPermanentlyDelete(u);
+                          setPermanentDeleteDialogOpen(true);
+                        }}
+                        color="error"
+                      >
+                        <DeleteOutlineIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </Box>
         ) : (
           <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative' }}>
             <Box display="flex" alignItems="center" mb={2} gap={1}>
@@ -3759,8 +3854,8 @@ function App() {
             <Typography variant="subtitle2" color="textSecondary" mb={1}>All Chats</Typography>
             <Box flex={1} sx={{ overflowY: 'auto', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
               <List sx={{ flex: 1 }}>
-                {(search.trim() ? searchResults : mergedSearchResults).length > 0 ? (
-                  (search.trim() ? searchResults : mergedSearchResults).map(u => {
+                {chatListToShow.length > 0 ? (
+                  chatListToShow.map(u => {
                     const unreadCount = unreadCounts[u._id] || 0;
                     const isOnline = getUserStatus(u).status === 'online';
                     const lastMsgObj = lastMessages[u._id];
@@ -3838,15 +3933,30 @@ function App() {
                             </Typography>}
                             <IconButton onClick={e => { e.stopPropagation(); handleOpenProfileDialog(u); }} sx={{ ml: 1 }}><PersonIcon /></IconButton>
                           </Box>
+                          {/* Favorite toggle button */}
+                          <Box flexShrink={0} display="flex" alignItems="center" ml={1}>
+                            <IconButton
+                              onClick={e => {
+                                e.stopPropagation();
+                                toggleFavorite(u._id);
+                              }}
+                              size="small"
+                              sx={{ color: favorites.includes(u._id) ? '#FFD700' : (darkMode ? '#bbb' : '#888') }}
+                              title={favorites.includes(u._id) ? 'Remove from favorites' : 'Add to favorites'}
+                            >
+                              {favorites.includes(u._id) ? <StarIcon fontSize="small" /> : <StarIcon fontSize="small" sx={{ color: 'inherit', opacity: 0.4 }} />}
+                            </IconButton>
+                          </Box>
+                          {/* Remove chat button (existing code) */}
                           <Box flexShrink={0} display="flex" alignItems="center" ml={2}>
                             <IconButton 
                               className="remove-chat-btn" 
                               sx={{ display: 'none' }}
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                
-                                // Remove from local state
-                                setUsers(prev => prev.filter(user => user._id !== u._id));
+                                // Mark user as scheduled for deletion (move to trash)
+                                const deletionDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                                setUsers(prev => prev.map(user => user._id === u._id ? { ...user, deletionScheduled: true, deletionDate } : user));
                                 setMessages(prev => (selectedUser && selectedUser._id === u._id ? [] : prev));
                                 setLastMessages(prev => {
                                   const updated = { ...prev };
@@ -3862,16 +3972,14 @@ function App() {
                                   setSelectedUser(null);
                                   setMessages([]);
                                 }
-                                
-                                // Also remove from database contacts
+                                // Optionally, call backend to schedule deletion
                                 try {
-                                  await axios.delete(`${API_URL}/messages/${u._id}`, {
-                                    headers: { Authorization: `Bearer ${token}` }
+                                  await axios.delete(`${API_URL}/auth/delete-account`, {
+                                    headers: { Authorization: `Bearer ${token}` },
+                                    data: { userId: u._id }
                                   });
-                                  console.log('User removed from database contacts:', u.username);
                                 } catch (error) {
-                                  // console.error('Error removing user from database contacts:', error);
-                                  // Even if database removal fails, keep the local removal
+                                  // Even if backend fails, keep the local change
                                 }
                               }}
                               size="small"
@@ -4849,6 +4957,35 @@ function App() {
           </MuiAlert>
         </Snackbar>
       )}
+      {/* Permanent Delete Dialog */}
+      <Dialog open={permanentDeleteDialogOpen} onClose={() => setPermanentDeleteDialogOpen(false)}>
+        <DialogTitle>Permanently Delete User</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to permanently delete this user? This action cannot be undone.</Typography>
+          <Typography sx={{ mt: 2 }} color="error">User: {userToPermanentlyDelete?.username}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPermanentDeleteDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              if (!userToPermanentlyDelete) return;
+              try {
+                await axios.delete(`${API_URL}/messages/users/${userToPermanentlyDelete._id}`, { headers: { Authorization: `Bearer ${token}` } });
+                setUsers(prev => prev.filter(user => user._id !== userToPermanentlyDelete._id));
+                setSnackbar({ message: 'User permanently deleted.', severity: 'success' });
+              } catch (err) {
+                setSnackbar({ message: 'Failed to permanently delete user.', severity: 'error' });
+              }
+              setPermanentDeleteDialogOpen(false);
+              setUserToPermanentlyDelete(null);
+            }}
+            color="error"
+            variant="contained"
+          >
+            Permanently Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </ThemeProvider>
   );
 }
