@@ -16,6 +16,7 @@ process.env.PORT = process.env.PORT || 5001;
 
 const authRoutes = require('./routes/auth');
 const messagesRoutes = require('./routes/messages');
+const callsRoute = require('./routes/calls');
 
 const app = express();
 const server = http.createServer(app);
@@ -61,6 +62,7 @@ app.use('/uploads', express.static('uploads'));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messagesRoutes);
+app.use('/api/calls', callsRoute);
 
 // Root endpoint
 app.get('/', (req, res) => {

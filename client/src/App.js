@@ -67,6 +67,10 @@ import { startAuthentication } from '@simplewebauthn/browser';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import LockScreen from './LockScreen';
 import AddIcon from '@mui/icons-material/Add';
+import LinkIcon from '@mui/icons-material/Link';
+import DialpadIcon from '@mui/icons-material/Dialpad';
+import NewCallPanel from './NewCallPanel';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
@@ -218,6 +222,20 @@ function App() {
   const [searchAvailableUsers, setSearchAvailableUsers] = useState([]);
   // Add a state for search results
   const [searchResults, setSearchResults] = useState([]);
+  // Add this state for call search
+  const [callSearch, setCallSearch] = useState("");
+  const [callHistory, setCallHistory] = useState([]);
+  const [showNewCallPanel, setShowNewCallPanel] = useState(false);
+  const [myStatusAvatarHover, setMyStatusAvatarHover] = useState(false);
+  const [shareStatusDialogOpen, setShareStatusDialogOpen] = useState(false);
+
+  // Example contacts data (replace with real data as needed)
+  const contacts = [
+    { name: 'Alice', status: 'Hey there!', avatar: 'A' },
+    { name: 'Bob', status: 'Available', avatar: 'B' },
+    { name: 'Charlie', status: 'At work', avatar: 'C' },
+    { name: 'David', status: 'Busy', avatar: 'D' },
+  ];
   
   // Effect: When search changes and is not empty, fetch available users matching the search
   useEffect(() => {
@@ -2494,6 +2512,26 @@ function App() {
     }
   }, [messages, selectedUser, selectedGroup]);
 
+  useEffect(() => {
+    if (nav === 'calls' && token) {
+      axios.get('http://localhost:5001/api/calls', {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(res => setCallHistory(res.data));
+    }
+  }, [nav, token]);
+
+  // Custom navigation handler to close message box when navigating to calls or status
+  const handleNav = (navTarget) => {
+    setNav(navTarget);
+    if (navTarget === 'calls' || navTarget === 'status') {
+      setSelectedUser(null);
+      setSelectedGroup(null);
+      setMessages([]);
+      setGroupMessages([]);
+      setMessage('');
+    }
+  };
+
   if (isLocked) {
     return <LockScreen onUnlock={() => setIsLocked(false)} />;
   }
@@ -3298,7 +3336,7 @@ function App() {
           user={user}
           darkMode={darkMode}
           setDarkMode={setDarkMode}
-          onNav={setNav}
+          onNav={handleNav}
           onLogout={handleLogout}
           onProfileEdit={handleProfileEdit}
           nav={nav}
@@ -3315,7 +3353,34 @@ function App() {
             <Typography variant="h5" fontWeight={900} sx={{ mt: 2, mb: 2, color: darkMode ? '#fff' : '#222', letterSpacing: 1 }}>Status</Typography>
             {/* My Status Card */}
             <Paper sx={{ display: 'flex', alignItems: 'center', p: 2, mb: 2, borderRadius: 3, bgcolor: darkMode ? '#000' : '#fff', '&:hover': { bgcolor: darkMode ? '#111' : '#f0f0f0' } }}>
-              <Avatar src={user?.avatar} sx={{ width: 48, height: 48, mr: 2 }} />
+              <Box position="relative"
+                onMouseEnter={() => setMyStatusAvatarHover(true)}
+                onMouseLeave={() => setMyStatusAvatarHover(false)}
+                sx={{ mr: 2 }}
+              >
+                <Avatar src={user?.avatar} sx={{ width: 48, height: 48 }} />
+                {myStatusAvatarHover && (
+                  <Box
+                    position="absolute"
+                    top={0}
+                    left={0}
+                    width={48}
+                    height={48}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    sx={{
+                      background: darkMode ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)',
+                      borderRadius: '50%',
+                      cursor: 'pointer',
+                      transition: 'background 0.2s',
+                    }}
+                    onClick={() => setShareStatusDialogOpen(true)}
+                  >
+                    <AddIcon sx={{ color: '#25d366', fontSize: 32 }} />
+                  </Box>
+                )}
+              </Box>
               <Box>
                 <Typography fontWeight={700} sx={{ color: darkMode ? '#fff' : '#222' }}>My status</Typography>
                 <Typography variant="body2" color="textSecondary">
@@ -3323,6 +3388,122 @@ function App() {
                 </Typography>
               </Box>
             </Paper>
+            {/* Share Status Dialog */}
+            <Dialog open={shareStatusDialogOpen} onClose={() => setShareStatusDialogOpen(false)} maxWidth="xs" fullWidth
+              PaperProps={{
+                sx: {
+                  borderRadius: 4,
+                  boxShadow: 12,
+                  bgcolor: darkMode ? '#181c1f' : '#f9f9f9',
+                  p: 0,
+                  overflow: 'hidden',
+                }
+              }}
+            >
+              <DialogTitle sx={{
+                textAlign: 'center',
+                fontWeight: 800,
+                fontSize: 26,
+                color: darkMode ? '#fff' : '#222',
+                letterSpacing: 1,
+                pb: 1.5,
+                pt: 3,
+              }}>
+                Share Status
+                <Divider sx={{ mt: 2, mb: 0, bgcolor: darkMode ? '#222e35' : '#e0e0e0', height: 2, borderRadius: 1 }} />
+              </DialogTitle>
+              <DialogContent sx={{ px: 4, pt: 2, pb: 1 }}>
+                <Box display="flex" flexDirection="column" gap={2.5} alignItems="center" justifyContent="center">
+                  <Button startIcon={<ImageIcon sx={{ color: '#25d366' }} />} fullWidth variant="outlined"
+                    sx={{
+                      justifyContent: 'flex-start',
+                      color: darkMode ? '#fff' : '#222',
+                      borderColor: darkMode ? '#333' : '#ccc',
+                      borderRadius: 3,
+                      fontWeight: 600,
+                      fontSize: 17,
+                      py: 1.5,
+                      px: 2,
+                      boxShadow: '0 1px 4px rgba(37,211,102,0.04)',
+                      transition: 'transform 0.15s, box-shadow 0.15s, border 0.15s',
+                      borderWidth: 2,
+                      '&:hover': {
+                        border: '2px solid #25d366',
+                        bgcolor: darkMode ? '#111' : '#f0f0f0',
+                        transform: 'scale(1.04)',
+                        boxShadow: '0 4px 16px rgba(37,211,102,0.10)',
+                      },
+                    }}
+                  >Share Image</Button>
+                  <Button startIcon={<MovieIcon sx={{ color: '#25d366' }} />} fullWidth variant="outlined"
+                    sx={{
+                      justifyContent: 'flex-start',
+                      color: darkMode ? '#fff' : '#222',
+                      borderColor: darkMode ? '#333' : '#ccc',
+                      borderRadius: 3,
+                      fontWeight: 600,
+                      fontSize: 17,
+                      py: 1.5,
+                      px: 2,
+                      boxShadow: '0 1px 4px rgba(37,211,102,0.04)',
+                      transition: 'transform 0.15s, box-shadow 0.15s, border 0.15s',
+                      borderWidth: 2,
+                      '&:hover': {
+                        border: '2px solid #25d366',
+                        bgcolor: darkMode ? '#111' : '#f0f0f0',
+                        transform: 'scale(1.04)',
+                        boxShadow: '0 4px 16px rgba(37,211,102,0.10)',
+                      },
+                    }}
+                  >Share Video</Button>
+                  <Button startIcon={<EditIcon sx={{ color: '#25d366' }} />} fullWidth variant="outlined"
+                    sx={{
+                      justifyContent: 'flex-start',
+                      color: darkMode ? '#fff' : '#222',
+                      borderColor: darkMode ? '#333' : '#ccc',
+                      borderRadius: 3,
+                      fontWeight: 600,
+                      fontSize: 17,
+                      py: 1.5,
+                      px: 2,
+                      boxShadow: '0 1px 4px rgba(37,211,102,0.04)',
+                      transition: 'transform 0.15s, box-shadow 0.15s, border 0.15s',
+                      borderWidth: 2,
+                      '&:hover': {
+                        border: '2px solid #25d366',
+                        bgcolor: darkMode ? '#111' : '#f0f0f0',
+                        transform: 'scale(1.04)',
+                        boxShadow: '0 4px 16px rgba(37,211,102,0.10)',
+                      },
+                    }}
+                  >Share Text</Button>
+                  <Button startIcon={<LinkIcon sx={{ color: '#25d366' }} />} fullWidth variant="outlined"
+                    sx={{
+                      justifyContent: 'flex-start',
+                      color: darkMode ? '#fff' : '#222',
+                      borderColor: darkMode ? '#333' : '#ccc',
+                      borderRadius: 3,
+                      fontWeight: 600,
+                      fontSize: 17,
+                      py: 1.5,
+                      px: 2,
+                      boxShadow: '0 1px 4px rgba(37,211,102,0.04)',
+                      transition: 'transform 0.15s, box-shadow 0.15s, border 0.15s',
+                      borderWidth: 2,
+                      '&:hover': {
+                        border: '2px solid #25d366',
+                        bgcolor: darkMode ? '#111' : '#f0f0f0',
+                        transform: 'scale(1.04)',
+                        boxShadow: '0 4px 16px rgba(37,211,102,0.10)',
+                      },
+                    }}
+                  >Share Link</Button>
+                </Box>
+              </DialogContent>
+              <DialogActions sx={{ bgcolor: 'transparent', px: 3, pb: 2, pt: 1 }}>
+                <Button onClick={() => setShareStatusDialogOpen(false)} sx={{ color: '#25d366', fontWeight: 700, fontSize: 16, borderRadius: 2, px: 3, py: 1, letterSpacing: 1, textTransform: 'none' }}>Cancel</Button>
+              </DialogActions>
+            </Dialog>
             <Typography variant="subtitle2" color="textSecondary" mb={1}>Recent updates</Typography>
             <List sx={{ width: '100%', maxWidth: 400, bgcolor: darkMode ? '#000' : '#fff', borderRadius: 2, mb: 2 }}>
               {statuses.filter(s => s.userId !== user?.id).map(status => (
@@ -3347,22 +3528,68 @@ function App() {
         ) : nav === 'calls' ? (
           <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
             <Typography variant="h5" fontWeight={900} sx={{ position: 'absolute', top: 20, left: 24, color: darkMode ? '#fff' : '#222', letterSpacing: 1 }}>Calls</Typography>
-            <IconButton color="primary" sx={{ position: 'absolute', top: 16, right: 16, bgcolor: 'transparent', borderRadius: 0, width: 'auto', height: 'auto', boxShadow: 'none', p: 0, '&:hover': { bgcolor: 'transparent', color: darkMode ? '#1976d2' : '#1976d2' } }}>
+            <IconButton 
+              color="primary" 
+              sx={{ position: 'absolute', top: 16, right: 16, bgcolor: 'transparent', borderRadius: 0, width: 'auto', height: 'auto', boxShadow: 'none', p: 0, '&:hover': { bgcolor: 'transparent', color: darkMode ? '#1976d2' : '#1976d2' } }}
+              onClick={() => setShowNewCallPanel(true)}
+            >
               <AddIcCallIcon sx={{ fontSize: 24, color: darkMode ? '#fff' : '#222' }} />
             </IconButton>
             <Box height={40} />
+            {/* Search bar for calls */}
+            <Box display="flex" alignItems="center" mb={2} gap={1}>
+              <Box flex={1} display="flex" alignItems="center" bgcolor={darkMode ? '#111' : '#f5f5f5'} px={1} sx={{ border: darkMode ? '1.5px solid #222e35' : '1.5px solid #e0e0e0', borderRadius: '50px' }}>
+                <SearchIcon sx={{ color: darkMode ? '#aebac1' : '#555' }} />
+                <input
+                  type="text"
+                  name="call-search-bar"
+                  placeholder="Search calls"
+                  value={callSearch}
+                  onChange={e => setCallSearch(e.target.value)}
+                  autoComplete="off"
+                  style={{ border: 'none', outline: 'none', background: 'transparent', padding: 8, flex: 1, color: darkMode ? '#fff' : '#222', fontSize: 16 }}
+                />
+              </Box>
+            </Box>
+            {/* Call history list, filtered by search */}
+            {callHistory.length === 0 && !callSearch.trim() && (
+              <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={6}>
+                <Typography variant="h6" fontWeight={700} sx={{ color: darkMode ? '#fff' : '#222', mb: 1 }}>No Calls Yet</Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ color: darkMode ? '#bbb' : '#555', mb: 3 }}>Start a new call</Typography>
+              </Box>
+            )}
             <List sx={{ width: '100%', maxWidth: 400, bgcolor: darkMode ? '#000' : '#fff', borderRadius: 2, mb: 2 }}>
-              {/* Example call history items */}
-              <ListItem sx={{ borderRadius: 2, mb: 1, bgcolor: darkMode ? '#000' : '#fff', '&:hover': { bgcolor: darkMode ? '#111' : '#f0f0f0' } }}>
-                <Avatar sx={{ mr: 2 }}>A</Avatar>
-                <ListItemText primary={<Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit' }}>Alice</Typography>} secondary={<Typography variant="body2" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main' }}>Missed Call - 2 hours ago</Typography>} />
-              </ListItem>
-              <ListItem sx={{ borderRadius: 2, mb: 1, bgcolor: darkMode ? '#000' : '#fff', '&:hover': { bgcolor: darkMode ? '#111' : '#f0f0f0' } }}>
-                <Avatar sx={{ mr: 2 }}>B</Avatar>
-                <ListItemText primary={<Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit' }}>Bob</Typography>} secondary={<Typography variant="body2" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main' }}>Outgoing Call - Yesterday</Typography>} />
-              </ListItem>
-              {/* Add more call items as needed */}
+              {callHistory
+                .filter(call => {
+                  const name = call.group ? call.group.name : (call.to && call.to._id === user._id ? call.from?.username : call.to?.username);
+                  return name && name.toLowerCase().includes(callSearch.toLowerCase());
+                })
+                .map(call => {
+                  const isGroup = !!call.group;
+                  const name = isGroup ? call.group.name : (call.to && call.to._id === user._id ? call.from?.username : call.to?.username);
+                  const avatar = isGroup ? call.group.avatar : (call.to && call.to._id === user._id ? call.from?.avatar : call.to?.avatar);
+                  const typeLabel = call.type.charAt(0).toUpperCase() + call.type.slice(1);
+                  const statusLabel = call.status.charAt(0).toUpperCase() + call.status.slice(1);
+                  const time = new Date(call.startedAt).toLocaleString();
+                  return (
+                    <ListItem key={call._id} sx={{ borderRadius: 2, mb: 1, bgcolor: darkMode ? '#000' : '#fff', '&:hover': { bgcolor: darkMode ? '#111' : '#f0f0f0' } }}>
+                      <Avatar src={avatar} sx={{ mr: 2 }}>{!avatar && name ? name[0] : ''}</Avatar>
+                      <ListItemText
+                        primary={<Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit' }}>{name}</Typography>}
+                        secondary={<Typography variant="body2" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main' }}>{typeLabel} Call - {statusLabel} - {time}</Typography>}
+                      />
+                    </ListItem>
+                  );
+                })}
             </List>
+            {showNewCallPanel && (
+              <NewCallPanel
+                open={showNewCallPanel}
+                onClose={() => setShowNewCallPanel(false)}
+                contacts={users}
+                frequentlyContacted={users.slice(0, 2)}
+              />
+            )}
           </Box>
         ) : (
           <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative' }}>
@@ -3765,8 +3992,37 @@ function App() {
           mt: 0,
           position: 'relative',
         }}>
-          {/* If no chat is selected, show SocialXIcon centered */}
-          {!(selectedUser || selectedGroup) && (
+          {/* If no chat is selected and nav is 'calls', show the calls welcome page */}
+          {nav === 'calls' && !(selectedUser || selectedGroup) && (
+            <Box flex={1} display="flex" flexDirection="column" alignItems="center" justifyContent="center">
+              <Typography variant="h5" color="textSecondary" sx={{ mb: 2 }}>
+                Start a new call
+              </Typography>
+              <Box display="flex" flexDirection="row" gap={6} mb={2}>
+                <Box display="flex" flexDirection="column" alignItems="center">
+                  <IconButton size="large" sx={{ color: '#25d366', mb: 1, width: 72, height: 72 }}>
+                    <CallOutlinedIcon fontSize="large" />
+                  </IconButton>
+                  <Typography variant="body2" color="textSecondary">Voice call</Typography>
+                </Box>
+                <Box display="flex" flexDirection="column" alignItems="center">
+                  <IconButton size="large" sx={{ color: '#25d366', mb: 1, width: 72, height: 72 }}>
+                    <VideocamOutlinedIcon fontSize="large" />
+                  </IconButton>
+                  <Typography variant="body2" color="textSecondary">Video call</Typography>
+                </Box>
+                <Box display="flex" flexDirection="column" alignItems="center">
+                  <IconButton size="large" sx={{ color: '#25d366', mb: 1, width: 72, height: 72 }}>
+                    <GroupAddIcon fontSize="large" />
+                  </IconButton>
+                  <Typography variant="body2" color="textSecondary">New group call</Typography>
+                </Box>
+              </Box>
+            </Box>
+          )}
+
+          {/* If no chat is selected and nav is not 'calls', show SocialXIcon centered */}
+          {!(selectedUser || selectedGroup) && nav !== 'calls' && nav !== 'status' && (
             <Box flex={1} display="flex" flexDirection="column" alignItems="center" justifyContent="center" sx={{ 
               minHeight: 0, 
               minWidth: 0,
@@ -3779,6 +4035,29 @@ function App() {
               <Typography variant="body1" color="textSecondary" align="center" sx={{ mt: 1 }}>
                 Select a conversation or start a new one
               </Typography>
+            </Box>
+          )}
+          {/* If nav is 'status' and no contact is selected, show status instruction */}
+          {!(selectedUser || selectedGroup) && nav === 'status' && (
+            <Box flex={1} display="flex" flexDirection="column" alignItems="center" justifyContent="center" sx={{ 
+              minHeight: 0, 
+              minWidth: 0,
+              bgcolor: darkMode ? '#000' : '#fff',
+              position: 'relative',
+              width: '100%',
+              height: '100%',
+            }}>
+              <Typography variant="body1" color="textSecondary" align="center" sx={{ fontWeight: 400 }}>
+                Click on a contact to view their status updates
+              </Typography>
+              <Box position="absolute" bottom={32} left={0} width="100%" display="flex" justifyContent="center">
+                <Box display="flex" alignItems="center" color="text.secondary" sx={{ opacity: 0.7 }}>
+                  <LockOutlinedIcon sx={{ fontSize: 18, mr: 1 }} />
+                  <Typography variant="body2" color="textSecondary">
+                    Status updates are end-to-end encrypted
+                  </Typography>
+                </Box>
+              </Box>
             </Box>
           )}
           {/* Top Bar */}
