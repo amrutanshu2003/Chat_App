@@ -1,13 +1,13 @@
 const axios = require('axios');
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'http://localhost:5001/api';
 
 async function testRegistration() {
   try {
     console.log('Testing server connection...');
     
     // Test server health
-    const healthResponse = await axios.get('http://localhost:5000/');
+    const healthResponse = await axios.get('http://localhost:5001/');
     console.log('✅ Server is running:', healthResponse.data);
     
     // Test registration with valid data

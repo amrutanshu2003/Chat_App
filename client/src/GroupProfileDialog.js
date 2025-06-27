@@ -144,7 +144,7 @@ const GroupProfileDialog = ({ open, onClose, group, currentUser, token, onGroupU
         setError(errorData.message || 'Failed to leave group');
       }
     } catch (error) {
-      console.error('Error leaving group:', error);
+      // console.error('Error leaving group:', error);
       setError('Failed to leave group');
     } finally {
       setLoading(false);
@@ -173,7 +173,7 @@ const GroupProfileDialog = ({ open, onClose, group, currentUser, token, onGroupU
         setError(errorData.message || 'Failed to remove member');
       }
     } catch (error) {
-      console.error('Error removing member:', error);
+      // console.error('Error removing member:', error);
       setError('Failed to remove member');
     } finally {
       setLoading(false);

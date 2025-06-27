@@ -74,13 +74,13 @@ const Alert = React.forwardRef(function Alert(props, ref) {
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
 
-const API_URL = 'http://localhost:5000/api';
-const SOCKET_URL = 'http://localhost:5000';
+const API_URL = 'http://localhost:5001/api';
+const SOCKET_URL = 'http://localhost:5001';
 
 const getFullUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:5000${url}`;
+  return `http://localhost:5001${url}`;
 };
 
 // Create a single notification audio instance to prevent conflicts
@@ -159,7 +159,7 @@ function App() {
     }
   }
   const [user, setUser] = useState(getStoredUser());
-  const [users, setUsers] = useState([]);
+  const [users, setUsers] = useState([]); // Start with empty array, only populate from database
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState('');
@@ -214,7 +214,25 @@ function App() {
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [newChatSearch, setNewChatSearch] = useState('');
+  // Add a state to store search results from available users
+  const [searchAvailableUsers, setSearchAvailableUsers] = useState([]);
+  // Add a state for search results
+  const [searchResults, setSearchResults] = useState([]);
   
+  // Effect: When search changes and is not empty, fetch available users matching the search
+  useEffect(() => {
+    if (search.trim()) {
+      axios.get(`${API_URL}/messages/users/available?q=${encodeURIComponent(search)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(res => {
+        setSearchResults(res.data);
+      }).catch(() => setSearchResults([]));
+    } else {
+      setSearchResults([]);
+    }
+  }, [search, token]);
+  
+  // Compute merged search results
   const filteredUsers = users.filter(u => {
     // Handle cases where username might be null, undefined, or not a string
     if (!u || !u.username || typeof u.username !== 'string') {
@@ -223,9 +241,22 @@ function App() {
     }
     return u.username.toLowerCase().includes(search.toLowerCase());
   });
-  
-  const pinnedChats = filteredUsers.filter(u => pinned.includes(u._id));
-  const unpinnedChats = filteredUsers.filter(u => !pinned.includes(u._id));
+
+  // If searching, merge in available users not already in conversations
+  let mergedSearchResults = filteredUsers;
+  if (search.trim() && searchAvailableUsers.length > 0) {
+    const existingIds = new Set(users.map(u => u._id));
+    const extraUsers = searchAvailableUsers.filter(u =>
+      u.username &&
+      u.username.toLowerCase().includes(search.toLowerCase()) &&
+      !existingIds.has(u._id)
+    );
+    mergedSearchResults = [...filteredUsers, ...extraUsers];
+  }
+  console.log('Merged search results:', mergedSearchResults); // Debug log
+
+  const pinnedChats = mergedSearchResults.filter(u => pinned.includes(u._id));
+  const unpinnedChats = mergedSearchResults.filter(u => !pinned.includes(u._id));
 
   // Debug logging for search functionality
   console.log('Search value:', search);
@@ -336,6 +367,9 @@ function App() {
       console.error('Failed to save lastMessages:', e);
     }
   }, [lastMessages]);
+
+  // Users are now completely database-driven - no localStorage persistence needed
+
   // Ref for messages container
   const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -603,35 +637,25 @@ function App() {
       document.addEventListener('visibilitychange', handleOnline);
       s.on('receiveMessage', (msg) => {
         console.log('receiveMessage event triggered:', msg);
-        console.log('Current user ID:', user?.id);
-        console.log('Message sender:', msg.sender);
-        console.log('Is this a message from myself?', user?.id === msg.sender);
-        console.log('Current selectedUser:', selectedUserRef.current?._id);
-        
-        // Only add message to messages state if it's relevant to the current conversation
-        if (selectedUserRef.current && 
-            (msg.sender === selectedUserRef.current._id || msg.sender === user?.id)) {
-          setMessages((prev) => [...prev, { sender: msg.sender, content: msg.content, read: false, createdAt: msg.createdAt }]);
-        }
-        
-        setUnreadCounts(prev => {
-          if (selectedUserRef.current && selectedUserRef.current._id === msg.sender) {
+        console.log('Current selectedUserRef:', selectedUserRef.current);
+        // Always update lastMessages and unreadCounts
+        if (msg.from && msg.to && msg.to._id === user.id) {
+          setLastMessages(prev => ({ ...prev, [msg.from._id]: msg }));
+          setUnreadCounts(prev => {
+            if (!selectedUserRef.current || selectedUserRef.current._id !== msg.from._id) {
+              return { ...prev, [msg.from._id]: (prev[msg.from._id] || 0) + 1 };
+            }
             return prev;
+          });
+          // If the chat with the sender is open, add the message to the chat box
+          if (selectedUserRef.current && selectedUserRef.current._id === msg.from._id) {
+            console.log('Adding message to chat box:', msg);
+            setMessages((prev) => [...prev, msg]);
           }
-          return { ...prev, [msg.sender]: (prev[msg.sender] || 0) + 1 };
-        });
-        setLastMessages(prev => {
-          if (!msg.sender) return prev;
-          // Allow socket messages to update lastMessages for all users
-          // The server fetch will override with fresh data when needed
-          return { ...prev, [msg.sender]: msg };
-        });
-
-        // Show notification for new message (but not for messages sent by current user)
-        if (user?.id !== msg.sender) {
-          showMessageNotification(msg);
-        } else {
-          console.log('Skipping notification for message sent by current user');
+          // Show notification for new message (but not for messages sent by current user)
+          if (msg.from._id !== user.id) {
+            showMessageNotification(msg);
+          }
         }
       });
       // Typing indicator events
@@ -1097,19 +1121,24 @@ function App() {
     console.log('=== END DEBUGGING ===');
   };
 
-  // Fetch users after login
+  // Fetch users after login - completely database-driven
   useEffect(() => {
     if (token) {
-      console.log('Fetching users with token:', token);
+      console.log('Fetching users from database with token:', token);
       axios.get(`${API_URL}/messages/users/all`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => {
-          console.log('Users fetched successfully:', res.data);
-          setUsers(res.data);
+          console.log('Users fetched successfully from database:', res.data);
+          // Set users directly from database - no localStorage fallback
+          setUsers(res.data || []);
         })
         .catch((error) => {
-          console.error('Error fetching users:', error);
+          // console.error('Error fetching users from database:', error);
+          // Keep empty array on error - no localStorage fallback
           setUsers([]);
         });
+    } else {
+      // Clear users when no token (logged out)
+      setUsers([]);
     }
   }, [token]);
 
@@ -1138,9 +1167,10 @@ function App() {
   // Fetch messages when a user is selected
   useEffect(() => {
     if (token && selectedUser) {
-      // Fetch fresh messages from server
+      console.log('Fetching messages for user:', selectedUser._id, selectedUser);
       axios.get(`${API_URL}/messages/${selectedUser._id}`, { headers: { Authorization: `Bearer ${token}` } })
         .then(res => {
+          console.log('Fetched messages:', res.data);
           setMessages(res.data);
           // Immediately update lastMessages with the actual last message from server
           if (res.data.length > 0) {
@@ -1158,7 +1188,8 @@ function App() {
             });
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error('Error fetching messages:', err);
           setMessages([]);
           // Clear last message on error
           setLastMessages(prev => {
@@ -1167,6 +1198,8 @@ function App() {
             return updated;
           });
         });
+    } else {
+      console.log('No token or no selectedUser, not fetching messages.');
     }
   }, [token, selectedUser]);
 
@@ -1441,7 +1474,7 @@ function App() {
       localStorage.setItem('user', JSON.stringify(res.data.user));
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
-      console.error(err);
+      // console.error(err);
     }
   };
 
@@ -1637,10 +1670,18 @@ function App() {
       const { url, type, name } = uploadResponse.data;
 
       // Then send the message with the file URL
-      const messageData = {
-        to: selectedUser?._id || selectedGroup?._id,
-        content: JSON.stringify({ file: url, type, name })
-      };
+      let messageData;
+      if (selectedUser) {
+        messageData = {
+          to: selectedUser._id,
+          content: JSON.stringify({ file: url, type, name })
+        };
+      } else if (selectedGroup) {
+        messageData = {
+          group: selectedGroup._id,
+          content: JSON.stringify({ file: url, type, name })
+        };
+      }
 
       const response = await axios.post(`${API_URL}/messages`, messageData, {
         headers: {
@@ -1668,7 +1709,7 @@ function App() {
         setLastMessages(prev => ({ ...prev, [selectedGroup._id]: newMessage }));
         if (socket) {
           socket.emit('sendGroupMessage', {
-            to: selectedGroup._id,
+            groupId: selectedGroup._id,
             content: newMessage.content,
             type: 'audio',
             file: url
@@ -1676,7 +1717,7 @@ function App() {
         }
       }
     } catch (err) {
-      console.error('Voice message error:', err);
+      // console.error('Voice message error:', err);
       setError('Failed to send voice message.');
     }
   };
@@ -1881,8 +1922,16 @@ function App() {
     }
   };
 
+  const [pendingSelectedUserId, setPendingSelectedUserId] = useState(null);
+
   const startNewChat = async (user) => {
+    console.log('startNewChat called with user:', user);
     try {
+      // First, add the user to contacts in database
+      await axios.post(`${API_URL}/messages/users/add-contact/${user._id}`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
       // Send an initial message to start the conversation
       const messageData = {
         to: user._id,
@@ -1894,20 +1943,57 @@ function App() {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Add the user to the current users list
-      setUsers(prev => [...prev, user]);
+      // Refresh users list from database to ensure consistency
+      await fetchUsersFromServer();
       
-      // Select the user to open the chat
-      setSelectedUser(user);
-      setSelectedGroup(null);
-      
-      // Close the dialog
+      setPendingSelectedUserId(user._id);
       setShowNewChatDialog(false);
       setNewChatSearch('');
-      
     } catch (error) {
-      console.error('Error starting new chat:', error);
+      // Even if backend fails, try to refresh from database
+      try {
+        await fetchUsersFromServer();
+      } catch (refreshError) {
+        console.error('Failed to refresh users from database:', refreshError);
+      }
+      
+      setPendingSelectedUserId(user._id);
+      setShowNewChatDialog(false);
+      setNewChatSearch('');
+      // Show error to user
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.message || 'Failed to start chat. Please try again.',
+        severity: 'error'
+      });
+      // console.error('Error starting new chat:', error);
     }
+  };
+
+  // Function to fetch users from database - completely database-driven
+  const fetchUsersFromServer = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/messages/users/all`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      console.log('Force refreshed users from database:', response.data);
+      // Set users directly from database - no localStorage fallback
+      setUsers(response.data || []);
+    } catch (error) {
+      // console.error('Error fetching users from database:', error);
+      // Keep empty array on error - no localStorage fallback
+      setUsers([]);
+    }
+  };
+
+  // Function to force refresh from database (for testing/debugging)
+  const forceRefreshUsersFromDatabase = async () => {
+    if (!token) {
+      console.log('No token available for database refresh');
+      return;
+    }
+    console.log('Force refreshing users from database...');
+    await fetchUsersFromServer();
   };
 
   const handleOpenProfileDialog = async (userOrGroup) => {
@@ -1990,26 +2076,30 @@ function App() {
 
   const handleSend = async () => {
     if (message.trim() && selectedUser) {
-      const msg = {
-        to: selectedUser._id,
-        content: message,
-        type: 'text',
-        createdAt: new Date().toISOString(),
-        read: false,
-        sender: user.id
-      };
-      setMessages(prev => [...prev, msg]);
-      setLastMessages(prev => ({ ...prev, [selectedUser._id]: msg }));
-      setMessage('');
-      setUnreadCounts(prev => {
-        const updated = { ...prev, [selectedUser._id]: 0 };
-        try {
-          localStorage.setItem('unreadCounts', JSON.stringify(updated));
-        } catch {}
-        return updated;
-      });
-      showSentMessageNotification(message, user.id, selectedUser._id);
-      if (socket && user?.id) socket.emit('sendMessage', msg);
+      try {
+        // Save the message to the backend
+        const response = await axios.post(`${API_URL}/messages`, {
+          to: selectedUser._id,
+          content: message,
+          messageType: 'text'
+        }, { headers: { Authorization: `Bearer ${token}` } });
+
+        const savedMessage = response.data;
+        setMessages(prev => [...prev, savedMessage]);
+        setLastMessages(prev => ({ ...prev, [selectedUser._id]: savedMessage }));
+        setMessage('');
+        setUnreadCounts(prev => {
+          const updated = { ...prev, [selectedUser._id]: 0 };
+          try {
+            localStorage.setItem('unreadCounts', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+        showSentMessageNotification(message, user.id, selectedUser._id);
+        if (socket && user?.id) socket.emit('sendMessage', savedMessage);
+      } catch (err) {
+        setError('Failed to send message.');
+      }
     }
   };
 
@@ -2084,7 +2174,7 @@ function App() {
     setForgotError('');
     setForgotSuccess('');
     try {
-      const res = await fetch('http://localhost:5000/api/auth/forgot-password', {
+      const res = await fetch('http://localhost:5001/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail })
@@ -2114,7 +2204,7 @@ function App() {
       return;
     }
     try {
-      const res = await fetch('http://localhost:5000/api/auth/reset-password', {
+      const res = await fetch('http://localhost:5001/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: forgotToken, newPassword: forgotNewPassword })
@@ -2139,7 +2229,7 @@ function App() {
   const handleCancelAccountDeletion = async (fromLogin) => {
     try {
       const tokenToUse = fromLogin ? pendingLoginToken : localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/auth/cancel-delete-account', {
+      const res = await fetch('http://localhost:5001/api/auth/cancel-delete-account', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${tokenToUse}` }
       });
@@ -2324,6 +2414,85 @@ function App() {
       };
     }
   }, [isLocked]);
+
+  useEffect(() => {
+    console.log('pendingSelectedUserId effect running', pendingSelectedUserId, users);
+    if (pendingSelectedUserId) {
+      const found = users.find(u => u._id === pendingSelectedUserId);
+      console.log('Found user in users array:', found);
+      if (found) {
+        setSelectedUser(found);
+        setSelectedGroup(null);
+        setPendingSelectedUserId(null);
+      }
+    }
+  }, [users, pendingSelectedUserId]);
+
+  useEffect(() => {
+    if (token && selectedGroup) {
+      axios
+        .get(`${API_URL}/messages/${selectedGroup._id}?type=group`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => {
+          setGroupMessages(res.data);
+          // Optionally update lastMessages for group
+          if (res.data.length > 0) {
+            const lastMessage = res.data[res.data.length - 1];
+            setLastMessages((prev) => ({
+              ...prev,
+              [selectedGroup._id]: lastMessage,
+            }));
+          } else {
+            setLastMessages((prev) => {
+              const updated = { ...prev };
+              delete updated[selectedGroup._id];
+              return updated;
+            });
+          }
+        })
+        .catch(() => {
+          setGroupMessages([]);
+          setLastMessages((prev) => {
+            const updated = { ...prev };
+            delete updated[selectedGroup._id];
+            return updated;
+          });
+        });
+    }
+  }, [token, selectedGroup]);
+
+  // Restore last selected chat on page load
+  useEffect(() => {
+    if (!user) return;
+    const lastSelected = localStorage.getItem('lastSelectedChat');
+    if (lastSelected && users.length > 0) {
+      try {
+        const parsed = JSON.parse(lastSelected);
+        if (parsed.type === 'user') {
+          const foundUser = users.find(u => u._id === parsed.id);
+          if (foundUser) {
+            setSelectedUser(foundUser);
+            setSelectedGroup(null);
+          }
+        } else if (parsed.type === 'group' && groups.length > 0) {
+          const foundGroup = groups.find(g => g._id === parsed.id);
+          if (foundGroup) {
+            setSelectedGroup(foundGroup);
+            setSelectedUser(null);
+          }
+        }
+      } catch {}
+    }
+  }, [user, users, groups]);
+
+  // Scroll to bottom instantly when messages or chat changes
+  useEffect(() => {
+    if ((selectedUser || selectedGroup) && messagesContainerRef.current) {
+      // Instantly jump to bottom (no smooth scroll)
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [messages, selectedUser, selectedGroup]);
 
   if (isLocked) {
     return <LockScreen onUnlock={() => setIsLocked(false)} />;
@@ -2634,7 +2803,7 @@ function App() {
                 Don't have an account?{' '}
                 <Button 
                   variant="text" 
-                  size="medium" 
+                  size="medium"
                   onClick={() => {
                     setUsername('');
                     setEmail('');
@@ -3331,7 +3500,7 @@ function App() {
                           </Box>
                           <Box flex={1} minWidth={0} mr={1.5}>
                             <Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {u.username}
+                              {u.username || u.name || u.email}
                             </Typography>
                             {typingUsers.includes(u._id) ? (
                               <Typography variant="body2" sx={{ fontStyle: 'italic', fontSize: 13, color: '#25d366' }}>typing...</Typography>
@@ -3363,29 +3532,50 @@ function App() {
             <Typography variant="subtitle2" color="textSecondary" mb={1}>All Chats</Typography>
             <Box flex={1} sx={{ overflowY: 'auto', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
               <List sx={{ flex: 1 }}>
-                {unpinnedChats.length > 0 ? (
-                  unpinnedChats.map(u => {
+                {(search.trim() ? searchResults : mergedSearchResults).length > 0 ? (
+                  (search.trim() ? searchResults : mergedSearchResults).map(u => {
                     const unreadCount = unreadCounts[u._id] || 0;
                     const isOnline = getUserStatus(u).status === 'online';
                     const lastMsgObj = lastMessages[u._id];
 
                     let fileData = null;
-                    let lastMsgContent = (lastMsgObj && typeof lastMsgObj === 'object' ? lastMsgObj.content : lastMsgObj) || '';
-                    try {
-                      const parsed = JSON.parse(lastMsgContent);
-                      if (parsed && parsed.file) {
-                        fileData = parsed;
-                        if (fileData.type === 'image') lastMsgContent = 'Image';
-                        else if (fileData.type === 'video') lastMsgContent = 'Video';
-                        else if (fileData.type === 'audio') lastMsgContent = 'Voice message';
-                        else lastMsgContent = fileData.name || 'File';
-                      }
-                    } catch {}
-
-                    const lastMsgTimestamp = (lastMsgObj && typeof lastMsgObj === 'object' ? lastMsgObj.createdAt : null);
+                    let lastMsgContent = '';
+                    let lastMsgTimestamp = null;
+                    if (lastMsgObj && typeof lastMsgObj === 'object') {
+                      lastMsgContent = lastMsgObj.content || '';
+                      lastMsgTimestamp = lastMsgObj.createdAt || null;
+                      try {
+                        const parsed = JSON.parse(lastMsgContent);
+                        if (parsed && parsed.file) {
+                          fileData = parsed;
+                          if (fileData.type === 'image') lastMsgContent = 'Image';
+                          else if (fileData.type === 'video') lastMsgContent = 'Video';
+                          else if (fileData.type === 'audio') lastMsgContent = 'Voice message';
+                          else lastMsgContent = fileData.name || 'File';
+                        }
+                      } catch {}
+                    }
+                    if (!lastMsgObj) {
+                      lastMsgContent = 'Start a conversation!';
+                    }
                     return (
                       <Tooltip title={lastMsgContent} placement="right">
-                        <ListItem button key={u._id} selected={selectedUser?._id === u._id} onClick={() => { setSelectedUser(u); setSelectedGroup(null); }} sx={{ borderRadius: 2, mb: 1 }}>
+                        <ListItem 
+                          button 
+                          key={u._id} 
+                          selected={selectedUser?._id === u._id} 
+                          onClick={() => {
+                            if (!users.find(convUser => convUser._id === u._id)) {
+                              startNewChat(u);
+                            } else {
+                              setSelectedUser(u); setSelectedGroup(null);
+                            }
+                          }} 
+                          sx={{ 
+                            borderRadius: 2, mb: 1, position: 'relative',
+                            '&:hover .remove-chat-btn': { display: 'flex' },
+                          }}
+                        >
                           <Box position="relative" display="inline-block" mr={1}>
                             <Avatar src={u.avatar} />
                             {isOnline && (
@@ -3397,42 +3587,138 @@ function App() {
                               </Box>
                             )}
                           </Box>
-                          <Box flex={1} minWidth={0} mr={1.5}>
-                            <Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {u.username}
-                            </Typography>
-                            {typingUsers.includes(u._id) ? (
-                              <Typography variant="body2" sx={{ fontStyle: 'italic', fontSize: 13, color: '#25d366' }}>typing...</Typography>
-                            ) : (
-                              <Box display="flex" alignItems="center">
-                                {fileData && fileData.type === 'image' && <ImageIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
-                                {fileData && fileData.type === 'video' && <VideocamIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
-                                {fileData && fileData.type === 'audio' && <AudiotrackIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
-                                {fileData && !['image', 'video', 'audio'].includes(fileData.type) && <DescriptionIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
-                                <Typography variant="body2" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {lastMsgContent}
-                                </Typography>
-                              </Box>
-                            )}
+                          <Box flex={1} minWidth={0} mr={1.5} display="flex" alignItems="center">
+                            <Box flex={1} minWidth={0}>
+                              <Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {u.username || u.name || u.email}
+                              </Typography>
+                              {typingUsers.includes(u._id) ? (
+                                <Typography variant="body2" sx={{ fontStyle: 'italic', fontSize: 13, color: '#25d366' }}>typing...</Typography>
+                              ) : (
+                                <Box display="flex" alignItems="center">
+                                  {fileData && fileData.type === 'image' && <ImageIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
+                                  {fileData && fileData.type === 'video' && <VideocamIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
+                                  {fileData && fileData.type === 'audio' && <AudiotrackIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
+                                  {fileData && !['image', 'video', 'audio'].includes(fileData.type) && <DescriptionIcon sx={{ fontSize: 16, mr: 0.5, color: darkMode ? '#bbb' : 'textSecondary.main' }} />}
+                                  <Typography variant="body2" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {lastMsgContent}
+                                  </Typography>
+                                </Box>
+                              )}
+                            </Box>
+                            {lastMsgTimestamp && <Typography variant="caption" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main', ml: 1 }}>
+                              {new Date(lastMsgTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </Typography>}
+                            <IconButton onClick={e => { e.stopPropagation(); handleOpenProfileDialog(u); }} sx={{ ml: 1 }}><PersonIcon /></IconButton>
                           </Box>
-                          {lastMsgTimestamp && <Typography variant="caption" color="textSecondary" sx={{ color: darkMode ? '#bbb' : 'textSecondary.main' }}>
-                            {new Date(lastMsgTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </Typography>}
-                          <IconButton onClick={e => { e.stopPropagation(); handleOpenProfileDialog(u); }}><PersonIcon /></IconButton>
+                          <Box flexShrink={0} display="flex" alignItems="center" ml={2}>
+                            <IconButton 
+                              className="remove-chat-btn" 
+                              sx={{ display: 'none' }}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                
+                                // Remove from local state
+                                setUsers(prev => prev.filter(user => user._id !== u._id));
+                                setMessages(prev => (selectedUser && selectedUser._id === u._id ? [] : prev));
+                                setLastMessages(prev => {
+                                  const updated = { ...prev };
+                                  delete updated[u._id];
+                                  return updated;
+                                });
+                                setUnreadCounts(prev => {
+                                  const updated = { ...prev };
+                                  delete updated[u._id];
+                                  return updated;
+                                });
+                                if (selectedUser && selectedUser._id === u._id) {
+                                  setSelectedUser(null);
+                                  setMessages([]);
+                                }
+                                
+                                // Also remove from database contacts
+                                try {
+                                  await axios.delete(`${API_URL}/messages/${u._id}`, {
+                                    headers: { Authorization: `Bearer ${token}` }
+                                  });
+                                  console.log('User removed from database contacts:', u.username);
+                                } catch (error) {
+                                  // console.error('Error removing user from database contacts:', error);
+                                  // Even if database removal fails, keep the local removal
+                                }
+                              }}
+                              size="small"
+                              color="error"
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
                         </ListItem>
                       </Tooltip>
                     );
                   })
                 ) : search ? (
-                  <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={4}>
-                    <SearchIcon sx={{ fontSize: 48, color: darkMode ? '#555' : '#ccc', mb: 2 }} />
-                    <Typography variant="body1" color="textSecondary" align="center">
-                      No users found for "{search}"
-                    </Typography>
-                    <Typography variant="body2" color="textSecondary" align="center" sx={{ mt: 1 }}>
-                      Try searching with a different term
-                    </Typography>
-                  </Box>
+                  <>
+                    {searchResults.length > 0 ? (
+                      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={4}>
+                        {searchResults.map(user => (
+                          <ListItem
+                            key={user._id || user.username}
+                            button
+                            onClick={() => {
+                              console.log('Clicked user in search results:', user);
+                              const foundUser = users.find(convUser => convUser._id === user._id);
+                              if (!foundUser) {
+                                startNewChat(user);
+                              } else {
+                                setSelectedUser(foundUser);
+                                setSelectedGroup(null);
+                                console.log('User already in users list, set as selectedUser:', foundUser);
+                              }
+                            }}
+                            sx={{
+                              borderRadius: 2,
+                              mb: 1,
+                              width: '100%',
+                              maxWidth: 320,
+                              '&:hover': {
+                                bgcolor: darkMode ? '#222' : '#f5f5f5'
+                              },
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-start',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Avatar src={user.avatar} sx={{ mr: 2 }}>
+                              {!user.avatar && user.username ? user.username[0] : null}
+                            </Avatar>
+                            <ListItemText
+                              primary={user.username}
+                              secondary={user.email}
+                              primaryTypographyProps={{
+                                fontWeight: 600,
+                                color: darkMode ? '#fff' : 'inherit'
+                              }}
+                              secondaryTypographyProps={{
+                                color: 'text.secondary'
+                              }}
+                            />
+                          </ListItem>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={4}>
+                        <SearchIcon sx={{ fontSize: 48, color: darkMode ? '#555' : '#ccc', mb: 2 }} />
+                        <Typography variant="body1" color="textSecondary" align="center">
+                          No users found for "{search}"
+                        </Typography>
+                        <Typography variant="body2" color="textSecondary" align="center" sx={{ mt: 1 }}>
+                          Try searching with a different term
+                        </Typography>
+                      </Box>
+                    )}
+                  </>
                 ) : (
                   <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={4}>
                     <PersonIcon sx={{ fontSize: 48, color: darkMode ? '#555' : '#ccc', mb: 2 }} />
@@ -3519,7 +3805,7 @@ function App() {
                   <ArrowBackIcon />
                 </IconButton>
               )}
-              {selectedUser && !isBlocked && (
+              {selectedUser && !isBlocked && (console.log('Rendering message box for selectedUser:', selectedUser),
                 <Box display="flex" alignItems="center" sx={{ cursor: 'pointer' }} onClick={() => { handleOpenProfileDialog(selectedUser); }}>
                   <Box position="relative" display="inline-block" mr={2}>
                     <Avatar src={selectedUser.avatar || undefined}>
@@ -3720,10 +4006,19 @@ function App() {
                   scrollbarWidth: 'none',
                   msOverflowStyle: 'none',
                   bgcolor: darkMode ? '#0d1a21' : '#E5DDD5',
-                  backgroundImage: `url('/whatsapp-doodle-bg.png')`,
+                  backgroundImage: darkMode
+                    ? `url('/whatsapp-doodle-bg.png')`
+                    : `url('/whatsapp-doodle-bg-light.png')`,
                   backgroundSize: 'auto',
                   backgroundRepeat: 'repeat',
                   backgroundPosition: 'center',
+                  // Make doodle lighter in light mode
+                  ...(darkMode
+                    ? {}
+                    : {
+                        // filter: 'brightness(2.2) opacity(0.18)', // Temporarily removed for debugging
+                        // border: '2px solid red', // Debug border removed
+                      }),
                 }}
                 p={3}
                 pb={2} // Add bottom padding to prevent overlap with input
@@ -3733,168 +4028,76 @@ function App() {
                   try {
                     fileData = msg.content && typeof msg.content === 'string' && msg.content.startsWith('{') ? JSON.parse(msg.content) : null;
                   } catch {}
-                  // Find the last sent & read message index
-                  const lastSentReadIdx = (() => {
-                    for (let i = messages.length - 1; i >= 0; i--) {
-                      if (messages[i].sender === user.id && messages[i].read) return i;
-                    }
-                    return -1;
-                  })();
+                  // Use correct sender check
+                  const isMine = msg.from && msg.from._id === user.id;
                   return (
                     <>
-                      <Box key={idx} display="flex" flexDirection="column" alignItems={msg.sender === user.id ? 'flex-end' : 'flex-start'} width="100%" sx={{ mb: 1 }}>
-                        <Box display="flex" justifyContent={msg.sender === user.id ? 'flex-end' : 'flex-start'} width="100%">
-                          <Box bgcolor={msg.sender === user.id ? '#0E605A' : (darkMode ? '#222' : '#eee')} color={msg.sender === user.id ? '#fff' : (darkMode ? '#fff' : '#000')} px={2} py={1} borderRadius={3} maxWidth={"60%"} boxShadow={1} sx={{ wordBreak: 'break-word', overflowWrap: 'break-word', width: 'auto' }}>
-                            {fileData && fileData.file ? (
-                              fileData.type === 'audio' ? (
-                                <AudioWaveform
-                                  ref={el => (audioRefs.current[msg._id] = el)}
-                                  audioSrc={getFullUrl(fileData.file)}
-                                  profileImg={getSenderInfo(msg.sender).avatar}
-                                  profileName={getSenderInfo(msg.sender).username}
-                                  duration={audioStates[msg._id]?.duration || 0}
-                                  isPlaying={audioStates[msg._id]?.isPlaying || false}
-                                  currentTime={audioStates[msg._id]?.currentTime || 0}
-                                  onPlayPause={() => handlePlayPause(msg._id)}
-                                  onSeek={(time) => handleSeek(msg._id, time)}
-                                />
-                              ) : (
-                                <Box display="flex" alignItems="center" gap={1}>
-                                  <Box>
-                                    {fileData.type === 'image' ? (
-                                      <img
-                                        src={getFullUrl(fileData.file)}
-                                        alt={fileData.name}
-                                        style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, cursor: 'pointer' }}
-                                        onClick={() => {
-                                          setDialogImageUrl(getFullUrl(fileData.file));
-                                          setOpenImageDialog(true);
-                                        }}
-                                      />
-                                    ) : fileData.type === 'video' ? (
-                                      <video src={getFullUrl(fileData.file)} controls style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8 }} />
-                                    ) : (
-                                      (() => {
-                                        const fileExtension = fileData.file.split('.').pop().toLowerCase();
-                                        const isPdf = fileExtension === 'pdf';
-                                        const isDocx = fileExtension === 'docx';
-                                        if (isPdf) {
-                                          return (
-                                            <Box
-                                              display="flex" alignItems="center" sx={{ cursor: 'pointer' }}
-                                              onClick={() => {
-                                                setDocumentUrl(fileData.file);
-                                                setPdfViewerOpen(true);
-                                              }}
-                                            >
-                                              <DescriptionIcon sx={{ color: msg.sender === user.id ? '#fff' : (darkMode ? '#fff' : '#1976d2'), mr: 1 }} />
-                                              <Typography variant="body2" sx={{ color: msg.sender === user.id ? '#fff' : (darkMode ? '#fff' : '#1976d2') }}>
-                                                {fileData.name}
-                                              </Typography>
-                                            </Box>
-                                          );
-                                        }
-                                        if (isDocx) {
-                                          return (
-                                            <Box
-                                              display="flex" alignItems="center" sx={{ cursor: 'pointer' }}
-                                              onClick={() => {
-                                                setDocumentUrl(fileData.file);
-                                                setDocxViewerOpen(true);
-                                              }}
-                                            >
-                                              <DescriptionIcon sx={{ color: msg.sender === user.id ? '#fff' : (darkMode ? '#fff' : '#1976d2'), mr: 1 }} />
-                                              <Typography variant="body2" sx={{ color: msg.sender === user.id ? '#fff' : (darkMode ? '#fff' : '#1976d2') }}>
-                                                {fileData.name}
-                                              </Typography>
-                                            </Box>
-                                          );
-                                        }
-                                        return (
-                                          <a href={getFullUrl(fileData.file)} target="_blank" rel="noopener noreferrer" style={{ color: msg.sender === user.id ? '#fff' : (darkMode ? '#fff' : '#1976d2') }}>
-                                            {fileData.name || 'Download file'}
-                                          </a>
-                                        );
-                                      })()
-                                    )}
-                                  </Box>
-                                </Box>
-                              )
+                      <Box key={idx} display="flex" flexDirection="column" alignItems={isMine ? 'flex-end' : 'flex-start'} width="100%" sx={{ mb: 1 }}>
+                        {/* Render message bubble here, using msg.content or fileData */}
+                        <div style={{
+                          background: isMine ? '#DCF8C6' : (darkMode ? '#222' : '#fff'),
+                          color: isMine ? '#222' : (darkMode ? '#fff' : '#222'),
+                          borderRadius: 8,
+                          padding: '8px 12px',
+                          maxWidth: '70%',
+                          wordBreak: 'break-word',
+                          boxShadow: '0 1px 1px rgba(0,0,0,0.05)',
+                          marginLeft: isMine ? 'auto' : 0,
+                          marginRight: isMine ? 0 : 'auto',
+                        }}>
+                          {fileData ? (
+                            fileData.type === 'image' ? (
+                              <img src={fileData.file} alt={fileData.name || 'Image'} style={{ maxWidth: 200, borderRadius: 8 }} />
+                            ) : fileData.type === 'audio' ? (
+                              <audio controls src={fileData.file} style={{ width: 200 }} />
+                            ) : fileData.type === 'video' ? (
+                              <video controls src={fileData.file} style={{ maxWidth: 200, borderRadius: 8 }} />
                             ) : (
-                              msg.content
-                            )}
-                            <Typography variant="caption" sx={{ color: '#888', ml: 1, fontSize: 11, alignSelf: 'flex-end' }}>
-                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </Typography>
-                            {msg.sender === user.id && (
-                              <Typography variant="caption" sx={{ color: '#888', ml: 0.5, fontSize: 11, alignSelf: 'flex-end' }}>
-                                {msg.read ? '✓✓' : '✓'}
-                              </Typography>
-                            )}
-                          </Box>
-                        </Box>
-                        {/* Seen indicator only below the last sent & read message */}
-                        {idx === lastSentReadIdx && (
-                          <Typography variant="caption" sx={{ color: '#888', mt: 0.5, fontSize: 12, maxWidth: '60%', textAlign: 'right' }}>Seen</Typography>
-                        )}
+                              <a href={fileData.file} target="_blank" rel="noopener noreferrer">{fileData.name || 'File'}</a>
+                            )
+                          ) : (
+                            msg.content
+                          )}
+                        </div>
                       </Box>
-                      {/* Typing indicator */}
-                      {selectedUser && typingUsers.includes(selectedUser._id) && (
-                        <Box display="flex" alignItems="center" mt={1} mb={1}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', height: 18 }}>
-                            <span style={{
-                              display: 'flex',
-                              flexDirection: 'row',
-                              alignItems: 'center',
-                              width: 28,
-                              height: 12,
-                              background: 'transparent',
-                            }}>
-                              <span style={{
-                                display: 'inline-block',
-                                width: 6,
-                                height: 6,
-                                margin: '0 2px',
-                                background: '#bbb',
-                                borderRadius: '50%',
-                                animation: 'typing-bounce 1s infinite',
-                                animationDelay: '0s',
-                              }} />
-                              <span style={{
-                                display: 'inline-block',
-                                width: 6,
-                                height: 6,
-                                margin: '0 2px',
-                                background: '#bbb',
-                                borderRadius: '50%',
-                                animation: 'typing-bounce 1s infinite',
-                                animationDelay: '0.2s',
-                              }} />
-                              <span style={{
-                                display: 'inline-block',
-                                width: 6,
-                                height: 6,
-                                margin: '0 2px',
-                                background: '#bbb',
-                                borderRadius: '50%',
-                                animation: 'typing-bounce 1s infinite',
-                                animationDelay: '0.4s',
-                              }} />
-                            </span>
-                            <style>{`
-                              @keyframes typing-bounce {
-                                0%, 80%, 100% { transform: scale(0.7); opacity: 0.7; }
-                                40% { transform: scale(1); opacity: 1; }
-                              }
-                            `}</style>
-                          </Box>
-                        </Box>
-                      )}
                     </>
                   );
                 })}
                 {/* Dummy div for scroll-to-bottom */}
                 <div ref={messagesEndRef} />
+                {/* Typing indicator bubble */}
+                {selectedUser && typingUsers.includes(selectedUser._id) && (
+                  <Box display="flex" flexDirection="column" alignItems="flex-start" width="100%" sx={{ mb: 1 }}>
+                    <span className="typing-dots" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28 }}>
+                      <span style={{
+                        display: 'inline-block',
+                        animation: 'typing-bubble 1s infinite',
+                        animationDelay: '0s',
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color: darkMode ? '#fff' : '#222',
+                        marginRight: 2
+                      }}>●</span>
+                      <span style={{
+                        display: 'inline-block',
+                        animation: 'typing-bubble 1s infinite',
+                        animationDelay: '0.2s',
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color: darkMode ? '#fff' : '#222',
+                        marginRight: 2
+                      }}>●</span>
+                      <span style={{
+                        display: 'inline-block',
+                        animation: 'typing-bubble 1s infinite',
+                        animationDelay: '0.4s',
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color: darkMode ? '#fff' : '#222'
+                      }}>●</span>
+                    </span>
+                  </Box>
+                )}
               </Box>
             )
           )}
@@ -4291,7 +4494,18 @@ function App() {
                   <ListItem
                     key={user._id}
                     button
-                    onClick={() => startNewChat(user)}
+                    onClick={() => {
+                      console.log('Clicked user in New Chat dialog:', user);
+                      const foundUser = users.find(convUser => convUser._id === user._id);
+                      if (!foundUser) {
+                        startNewChat(user);
+                      } else {
+                        setSelectedUser(foundUser);
+                        setSelectedGroup(null);
+                        setShowNewChatDialog(false);
+                        console.log('User already in users list, set as selectedUser:', foundUser);
+                      }
+                    }}
                     sx={{
                       borderRadius: 2,
                       mb: 1,

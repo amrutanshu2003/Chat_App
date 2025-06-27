@@ -57,17 +57,7 @@ export default function SeasonalThemeSelector({ seasonalTheme, setSeasonalTheme,
   }, [seasonalTheme, getCurrentSeason]);
 
   // Safety check for required props (after hooks)
-  if (!seasonalTheme || !setSeasonalTheme || !getCurrentSeason) {
-    console.error('SeasonalThemeSelector: Missing required props', { seasonalTheme, setSeasonalTheme, getCurrentSeason });
-    return (
-      <Box p={3} sx={{ maxWidth: 500, margin: "auto" }}>
-        <Typography variant="h5" gutterBottom>🍃 Seasonal Theme</Typography>
-        <Typography variant="body2" color="error">
-          Error: Seasonal theme component is not properly configured.
-        </Typography>
-      </Box>
-    );
-  }
+  // console.error('SeasonalThemeSelector: Missing required props', { seasonalTheme, setSeasonalTheme, getCurrentSeason });
 
   const handleSeasonSelect = (seasonKey) => {
     console.log('Season selected:', seasonKey);

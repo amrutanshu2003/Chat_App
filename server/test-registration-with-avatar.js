@@ -3,14 +3,14 @@ const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'http://localhost:5001/api';
 
 async function testRegistrationWithAvatar() {
   try {
     console.log('Testing server connection...');
     
     // Test server health
-    const healthResponse = await axios.get('http://localhost:5000/');
+    const healthResponse = await axios.get('http://localhost:5001/');
     console.log('✅ Server is running:', healthResponse.data);
     
     // Create a simple test image (1x1 pixel PNG)

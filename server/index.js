@@ -12,9 +12,10 @@ require('dotenv').config();
 // Set default environment variables if not provided
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
 process.env.MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/chat-app';
-process.env.PORT = process.env.PORT || 5000;
+process.env.PORT = process.env.PORT || 5001;
 
 const authRoutes = require('./routes/auth');
+const messagesRoutes = require('./routes/messages');
 
 const app = express();
 const server = http.createServer(app);
@@ -59,6 +60,7 @@ app.use('/uploads', express.static('uploads'));
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/messages', messagesRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -91,6 +93,50 @@ mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.log('MongoDB connection error:', err));
 
+// --- SOCKET.IO REAL-TIME MESSAGING ---
+io.on('connection', (socket) => {
+  // User joins their own room for private messages
+  socket.on('join', (userId) => {
+    socket.join(userId);
+    console.log(`User ${userId} joined their room`);
+  });
+
+  // Listen for sendMessage from sender and relay to receiver
+  socket.on('sendMessage', (msg) => {
+    // msg.to can be an object or a string
+    let toId = msg.to;
+    if (msg.to && typeof msg.to === 'object' && msg.to._id) {
+      toId = msg.to._id;
+    }
+    if (toId) {
+      io.to(toId).emit('receiveMessage', msg);
+      console.log(`Relayed message from ${msg.from && msg.from._id ? msg.from._id : msg.sender} to ${toId}`);
+    }
+  });
+
+  // (Optional) Group message relay
+  socket.on('sendGroupMessage', (msg) => {
+    if (msg.groupId) {
+      io.to(msg.groupId).emit('receiveGroupMessage', msg);
+      console.log(`Relayed group message to group ${msg.groupId}`);
+    }
+  });
+
+  // (Optional) User online status, typing, etc. can be added here
+
+  // Relay typing indicator
+  socket.on('typing', ({ sender, receiver }) => {
+    if (receiver) {
+      io.to(receiver).emit('typing', { sender });
+    }
+  });
+  socket.on('stopTyping', ({ sender, receiver }) => {
+    if (receiver) {
+      io.to(receiver).emit('stopTyping', { sender });
+    }
+  });
+});
+
 // Scheduled job to delete users whose deletionDate has passed
 setInterval(async () => {
   try {
@@ -111,5 +157,7 @@ setInterval(async () => {
     console.error('Scheduled user deletion error:', err);
   }
 }, 60 * 60 * 1000); // Every hour
+
+console.log('Messages routes loaded');
 
 server.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));

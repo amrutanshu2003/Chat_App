@@ -50,7 +50,7 @@ const CreateGroupDialog = ({ open, onClose, onGroupCreated, token }) => {
         setUsers(data);
       }
     } catch (error) {
-      console.error('Error fetching users:', error);
+      // console.error('Error fetching users:', error);
       setError('Failed to load users');
     }
   };
@@ -101,7 +101,7 @@ const CreateGroupDialog = ({ open, onClose, onGroupCreated, token }) => {
         setError(errorData.message || 'Failed to create group');
       }
     } catch (error) {
-      console.error('Error creating group:', error);
+      // console.error('Error creating group:', error);
       setError('Failed to create group');
     } finally {
       setLoading(false);

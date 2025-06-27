@@ -21,6 +21,8 @@ function auth(req, res, next) {
 
 // Send a message (individual or group)
 router.post('/', auth, async (req, res) => {
+  console.log('POST /messages called');
+  console.log('req.user:', req.user);
   try {
     const { to, group, content, messageType = 'text', fileUrl, fileName, fileSize, replyTo } = req.body;
     
@@ -32,7 +34,10 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ message: 'Cannot send to both user and group simultaneously' });
     }
 
-    const sender = await User.findById(req.user.id);
+    // Use userId from JWT payload
+    const senderId = req.user.userId;
+    const sender = await User.findById(senderId);
+    console.log('Sender from DB:', sender);
     if (!sender) {
       return res.status(404).json({ message: 'Sender not found' });
     }
@@ -45,16 +50,19 @@ router.post('/', auth, async (req, res) => {
       }
       
       // Check if users are blocked
-      if (sender.blockedUsers.includes(to) || receiver.blockedUsers.includes(req.user.id)) {
+      if (sender.blockedUsers.includes(to) || receiver.blockedUsers.includes(senderId)) {
         return res.status(403).json({ message: 'You cannot send messages to this user.' });
       }
+      // Add each other as contacts
+      await User.findByIdAndUpdate(senderId, { $addToSet: { contacts: to } });
+      await User.findByIdAndUpdate(to, { $addToSet: { contacts: senderId } });
     }
 
     // For group messages
     if (group) {
       const groupDoc = await Group.findOne({
         _id: group,
-        'members.user': req.user.id,
+        'members.user': senderId,
         'members.isActive': true
       });
       
@@ -64,7 +72,7 @@ router.post('/', auth, async (req, res) => {
     }
 
     const messageData = {
-      from: req.user.id,
+      from: senderId,
       content,
       messageType,
       fileUrl: fileUrl || '',
@@ -81,6 +89,7 @@ router.post('/', auth, async (req, res) => {
 
     const message = new Message(messageData);
     await message.save();
+    console.log('Message saved to database:', message);
 
     // Populate sender details
     await message.populate('from', 'username email avatar');
@@ -110,7 +119,7 @@ router.get('/:id', auth, async (req, res) => {
       // Verify user is member of the group
       const group = await Group.findOne({
         _id: id,
-        'members.user': req.user.id,
+        'members.user': req.user.userId,
         'members.isActive': true
       });
       
@@ -131,8 +140,8 @@ router.get('/:id', auth, async (req, res) => {
       
       messages = await Message.find({
         $or: [
-          { from: req.user.id, to: id },
-          { from: id, to: req.user.id }
+          { from: req.user.userId, to: id },
+          { from: id, to: req.user.userId }
         ]
       })
         .populate('from', 'username email avatar')
@@ -151,33 +160,12 @@ router.get('/:id', auth, async (req, res) => {
 // Get users with conversations (for chat list)
 router.get('/users/all', auth, async (req, res) => {
   try {
-    // Find all messages where the current user is involved (either sender or receiver)
-    const messages = await Message.find({
-      $or: [
-        { from: req.user.id },
-        { to: req.user.id }
-      ]
-    }).populate('from to', 'username email avatar about lastSeen');
-
-    // Extract unique user IDs from conversations
-    const conversationUserIds = new Set();
-    
-    messages.forEach(message => {
-      if (message.from && message.from._id.toString() !== req.user.id) {
-        conversationUserIds.add(message.from._id.toString());
-      }
-      if (message.to && message.to._id.toString() !== req.user.id) {
-        conversationUserIds.add(message.to._id.toString());
-      }
-    });
-
-    // Get user details for users with conversations
-    const users = await User.find({ 
-      _id: { $in: Array.from(conversationUserIds) }
-    }).select('-password');
+    // Get all contacts for the current user
+    const user = await User.findById(req.user.userId).populate('contacts', 'username email avatar about lastSeen');
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     // Format user list
-    const userList = users.map(u => ({
+    const userList = user.contacts.map(u => ({
       _id: u._id,
       username: u.username,
       email: u.email,
@@ -188,26 +176,71 @@ router.get('/users/all', auth, async (req, res) => {
 
     res.json(userList);
   } catch (err) {
-    console.error('Error fetching users with conversations:', err);
+    console.error('Error fetching contacts:', err);
     res.status(500).json({ message: err.message });
   }
 });
 
 // Get all users (for starting new conversations)
 router.get('/users/available', auth, async (req, res) => {
+  console.log('GET /users/available hit');
   try {
-    const users = await User.find({ _id: { $ne: req.user.id } }).select('-password');
-    // Only return id, username, email, avatar
-    const userList = users.map(u => ({
-      _id: u._id,
-      username: u.username,
-      email: u.email,
-      avatar: u.avatar,
-      about: u.about,
-      lastSeen: u.lastSeen
-    }));
-    res.json(userList);
+    const q = req.query.q || '';
+    const users = await User.find(
+      { 
+        username: { $regex: q, $options: 'i' },
+        _id: { $ne: req.user.userId } // Exclude current user
+      },
+      'username email avatar about lastSeen'
+    );
+    res.json(users);
   } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Add user to contacts (for starting new chat)
+router.post('/users/add-contact/:userId', auth, async (req, res) => {
+  try {
+    console.log('req.user:', req.user);
+    console.log('req.params.userId:', req.params.userId);
+
+    const { userId } = req.params;
+    const userIdFromToken = req.user.userId;
+    if (!userIdFromToken) {
+      return res.status(400).json({ message: 'User ID missing from token.' });
+    }
+    if (!userId) {
+      return res.status(400).json({ message: 'Target userId parameter missing.' });
+    }
+
+    // Check if user exists
+    const targetUser = await User.findById(String(userId));
+    if (!targetUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if current user exists
+    const currentUser = await User.findById(String(userIdFromToken));
+    if (!currentUser) {
+      return res.status(404).json({ message: 'Current user not found' });
+    }
+
+    // Check if users are blocked
+    if (
+      (Array.isArray(currentUser.blockedUsers) && currentUser.blockedUsers.map(String).includes(String(userId))) ||
+      (Array.isArray(targetUser.blockedUsers) && targetUser.blockedUsers.map(String).includes(String(userIdFromToken)))
+    ) {
+      return res.status(403).json({ message: 'You cannot add this user to contacts.' });
+    }
+
+    // Add each other as contacts
+    await User.findByIdAndUpdate(String(userIdFromToken), { $addToSet: { contacts: String(userId) } });
+    await User.findByIdAndUpdate(String(userId), { $addToSet: { contacts: String(userIdFromToken) } });
+
+    res.json({ message: 'User added to contacts' });
+  } catch (err) {
+    console.error('Error adding user to contacts:', err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -223,13 +256,13 @@ router.post('/read/:id', auth, async (req, res) => {
       await Message.updateMany(
         { 
           group: id, 
-          from: { $ne: req.user.id },
-          'readBy.user': { $ne: req.user.id }
+          from: { $ne: req.user.userId },
+          'readBy.user': { $ne: req.user.userId }
         }, 
         { 
           $push: { 
             readBy: { 
-              user: req.user.id, 
+              user: req.user.userId, 
               readAt: new Date() 
             } 
           } 
@@ -240,13 +273,13 @@ router.post('/read/:id', auth, async (req, res) => {
       await Message.updateMany(
         { 
           from: id, 
-          to: req.user.id,
-          'readBy.user': { $ne: req.user.id }
+          to: req.user.userId,
+          'readBy.user': { $ne: req.user.userId }
         }, 
         { 
           $push: { 
             readBy: { 
-              user: req.user.id, 
+              user: req.user.userId, 
               readAt: new Date() 
             } 
           } 
@@ -289,16 +322,19 @@ router.delete('/:id', auth, async (req, res) => {
       // Delete group messages (only for the current user)
       await Message.deleteMany({
         group: id,
-        from: req.user.id
+        from: req.user.userId
       });
     } else {
       // Delete individual chat messages
       await Message.deleteMany({
         $or: [
-          { from: req.user.id, to: id },
-          { from: id, to: req.user.id }
+          { from: req.user.userId, to: id },
+          { from: id, to: req.user.userId }
         ]
       });
+      // Remove each other from contacts
+      await User.findByIdAndUpdate(req.user.userId, { $pull: { contacts: id } });
+      await User.findByIdAndUpdate(id, { $pull: { contacts: req.user.userId } });
     }
     
     res.json({ message: 'Chat cleared' });
@@ -317,14 +353,14 @@ router.delete('/me/:id', auth, async (req, res) => {
       // Delete group messages for current user
       await Message.deleteMany({
         group: id,
-        from: req.user.id
+        from: req.user.userId
       });
     } else {
       // Delete individual chat messages
       await Message.deleteMany({
         $or: [
-          { from: req.params.id, to: req.user.id },
-          { from: req.user.id, to: req.params.id }
+          { from: req.params.id, to: req.user.userId },
+          { from: req.user.userId, to: req.params.id }
         ]
       });
     }
@@ -338,7 +374,7 @@ router.delete('/me/:id', auth, async (req, res) => {
 // Block a user
 router.post('/block/:userId', auth, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, { $addToSet: { blockedUsers: req.params.userId } });
+    await User.findByIdAndUpdate(req.user.userId, { $addToSet: { blockedUsers: req.params.userId } });
     res.json({ message: 'User blocked' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -348,7 +384,7 @@ router.post('/block/:userId', auth, async (req, res) => {
 // Unblock a user
 router.post('/unblock/:userId', auth, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, { $pull: { blockedUsers: req.params.userId } });
+    await User.findByIdAndUpdate(req.user.userId, { $pull: { blockedUsers: req.params.userId } });
     res.json({ message: 'User unblocked' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -358,7 +394,7 @@ router.post('/unblock/:userId', auth, async (req, res) => {
 // Check if a user is blocked
 router.get('/is-blocked/:userId', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.userId);
     const isBlocked = user.blockedUsers.includes(req.params.userId);
     res.json({ isBlocked });
   } catch (err) {
@@ -377,7 +413,7 @@ router.put('/:messageId', auth, async (req, res) => {
     }
     
     // Check if user is the sender
-    if (message.from.toString() !== req.user.id) {
+    if (message.from.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'You can only edit your own messages' });
     }
     
@@ -411,13 +447,13 @@ router.delete('/message/:messageId', auth, async (req, res) => {
     }
     
     // Check if user is the sender or admin of the group
-    if (message.from.toString() !== req.user.id) {
+    if (message.from.toString() !== req.user.userId) {
       if (message.group) {
         const group = await Group.findOne({
           _id: message.group,
           $or: [
-            { admin: req.user.id },
-            { 'members.user': req.user.id, 'members.role': { $in: ['admin', 'moderator'] } }
+            { admin: req.user.userId },
+            { 'members.user': req.user.userId, 'members.role': { $in: ['admin', 'moderator'] } }
           ]
         });
         
@@ -449,18 +485,18 @@ router.post('/:messageId/reactions', auth, async (req, res) => {
     
     // Check if user already reacted with this emoji
     const existingReaction = message.reactions.find(
-      r => r.user.toString() === req.user.id && r.emoji === emoji
+      r => r.user.toString() === req.user.userId && r.emoji === emoji
     );
     
     if (existingReaction) {
       // Remove reaction
       message.reactions = message.reactions.filter(
-        r => !(r.user.toString() === req.user.id && r.emoji === emoji)
+        r => !(r.user.toString() === req.user.userId && r.emoji === emoji)
       );
     } else {
       // Add reaction
       message.reactions.push({
-        user: req.user.id,
+        user: req.user.userId,
         emoji
       });
     }
