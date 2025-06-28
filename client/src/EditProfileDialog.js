@@ -9,7 +9,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 const getFullUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:5000${url}`;
+  return `http://localhost:5001${url}`;
 };
 
 const EditProfileDialog = ({ open, onClose, user, onSave }) => {
@@ -20,8 +20,8 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
   const [usernameDisabled, setUsernameDisabled] = useState(false);
   const [usernameHelper, setUsernameHelper] = useState('');
 
-  const API_URL = 'http://localhost:5000/api';
-  const BACKEND_URL = 'http://localhost:5000';
+  const API_URL = 'http://localhost:5001/api';
+  const BACKEND_URL = 'http://localhost:5001';
 
   const fileInputRef = useRef();
   const pencilRef = useRef();
@@ -131,8 +131,20 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
       setAvatar(url);
       setTimeout(() => onSave({ username, email, avatar: url, about }), 0);
     } catch (err) {
+      let errorMsg = 'Failed to upload image: ';
+      if (err.response) {
+        if (err.response.data && err.response.data.message) {
+          errorMsg += err.response.data.message;
+        } else {
+          errorMsg += `Server responded with status ${err.response.status}`;
+        }
+      } else if (err.request) {
+        errorMsg += 'No response from server. Is the backend running on port 5001?';
+      } else {
+        errorMsg += err.message;
+      }
+      alert(errorMsg);
       console.error('Upload error:', err);
-      alert('Failed to upload image: ' + (err.response?.data?.message || err.message));
     }
     setCropDialogOpen(false);
     setCropImageSrc(null);
@@ -175,12 +187,16 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
             onMouseLeave={() => setAvatarHover(false)}
           >
             <Avatar
+              key={avatar}
               alt="User Avatar"
-              src={getFullUrl(avatar)}
+              src={avatar ? getFullUrl(avatar) : '/default-avatar.png'}
               sx={{ width: 100, height: 100, cursor: 'pointer', mb: 2, transition: 'filter 0.2s' }}
               style={avatarHover ? { filter: 'brightness(0.5)' } : {}}
+              imgProps={{
+                onError: (e) => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }
+              }}
             >
-              {!avatar && username && username[0]}
+              {(!avatar || avatar === '/default-avatar.png') && username && username[0]}
             </Avatar>
             {avatarHover && (
               <Box
@@ -242,7 +258,13 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
             <ArrowBackIcon />
           </IconButton>
           <Box display="flex" justifyContent="center" alignItems="center" height="100vh" width="100vw">
-            <img src={getFullUrl(avatar)} alt="Profile" style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
+            <img
+              key={avatar}
+              src={avatar ? getFullUrl(avatar) + `?t=${Date.now()}` : '/default-avatar.png'}
+              alt="Profile"
+              style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }}
+              onError={e => { e.target.onerror = null; e.target.src = '/default-avatar.png'; }}
+            />
           </Box>
         </Dialog>
         <Dialog open={cropDialogOpen} onClose={handleCropCancel} maxWidth="sm" fullWidth>

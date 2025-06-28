@@ -11,7 +11,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 const getFullUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:5000${url}`;
+  return `http://localhost:5001${url}`;
 };
 
 const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus, fetchLastSeenIfNeeded }) => {

@@ -63,7 +63,6 @@ import ChatIcon from '@mui/icons-material/Chat';
 import PhoneIcon from '@mui/icons-material/Phone';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import EditIcon from '@mui/icons-material/Edit';
-import { startAuthentication } from '@simplewebauthn/browser';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import LockScreen from './LockScreen';
 import AddIcon from '@mui/icons-material/Add';
@@ -71,7 +70,6 @@ import LinkIcon from '@mui/icons-material/Link';
 import DialpadIcon from '@mui/icons-material/Dialpad';
 import NewCallPanel from './NewCallPanel';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
-import UndoIcon from '@mui/icons-material/Undo';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
   return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
@@ -121,6 +119,49 @@ function playNotificationSound() {
   } catch (e) {
     console.log('Notification sound error:', e);
   }
+}
+
+// Add this function near the top of App.js
+function saveMediaToIndexedDB(file, fileName) {
+  // Use a unique key for each file
+  const uniqueFileName = `${Date.now()}_${fileName}`;
+  const request = indexedDB.open('media');
+  request.onupgradeneeded = function(event) {
+    const db = event.target.result;
+    if (!db.objectStoreNames.contains('files')) {
+      db.createObjectStore('files', { keyPath: 'fileName' });
+    }
+  };
+  request.onsuccess = function(event) {
+    const db = event.target.result;
+    if (!db.objectStoreNames.contains('files')) {
+      const newVersion = db.version + 1;
+      db.close();
+      const upgradeRequest = indexedDB.open('media', newVersion);
+      upgradeRequest.onupgradeneeded = function(e) {
+        const upgradeDb = e.target.result;
+        if (!upgradeDb.objectStoreNames.contains('files')) {
+          upgradeDb.createObjectStore('files', { keyPath: 'fileName' });
+        }
+      };
+      upgradeRequest.onsuccess = function(e) {
+        const upgradeDb = e.target.result;
+        const tx = upgradeDb.transaction('files', 'readwrite');
+        const store = tx.objectStore('files');
+        store.put({ fileName: uniqueFileName, blob: file });
+        tx.oncomplete = function() {
+          upgradeDb.close();
+        };
+      };
+      return;
+    }
+    const tx = db.transaction('files', 'readwrite');
+    const store = tx.objectStore('files');
+    store.put({ fileName: uniqueFileName, blob: file });
+    tx.oncomplete = function() {
+      db.close();
+    };
+  };
 }
 
 function App() {
@@ -239,10 +280,6 @@ function App() {
     }
   });
 
-  // State for permanent delete dialog in Trash
-  const [permanentDeleteDialogOpen, setPermanentDeleteDialogOpen] = useState(false);
-  const [userToPermanentlyDelete, setUserToPermanentlyDelete] = useState(null);
-
   // Example contacts data (replace with real data as needed)
   const contacts = [
     { name: 'Alice', status: 'Hey there!', avatar: 'A' },
@@ -271,8 +308,6 @@ function App() {
       console.log('Skipping user with invalid username:', u);
       return false;
     }
-    // Exclude users scheduled for deletion unless in trash view
-    if (nav !== 'trash' && u.deletionScheduled) return false;
     return u.username.toLowerCase().includes(search.toLowerCase());
   });
 
@@ -430,6 +465,8 @@ function App() {
   const [docxViewerOpen, setDocxViewerOpen] = useState(false);
   const [documentUrl, setDocumentUrl] = useState('');
   const docxContainerRef = useRef(null);
+  const [videoLoadingStates, setVideoLoadingStates] = useState({});
+  const [videoErrorStates, setVideoErrorStates] = useState({});
   
   const handleSnackbarClose = () => {
     setSnackbar(null);
@@ -2139,46 +2176,96 @@ function App() {
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
-    if (!file || !selectedUser) return;
-    console.log('handleFileChange called with file:', file.name, 'to user:', selectedUser._id);
+    if (!file || (!selectedUser && !selectedGroup)) return;
+    console.log('handleFileChange called with file:', file.name, 'to user:', selectedUser?._id, 'to group:', selectedGroup?._id);
     try {
       const formData = new FormData();
       formData.append('file', file);
+      
+      console.log('Uploading file to:', `${API_URL}/messages/upload`);
       const uploadRes = await axios.post(`${API_URL}/messages/upload`, formData, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data',
         },
       });
+      
+      console.log('Upload response:', uploadRes.data);
+      
       // Send a message with the file info
       const { url, type, name } = uploadRes.data;
-      const messageResponse = await axios.post(`${API_URL}/messages`, {
-        to: selectedUser._id,
-        content: JSON.stringify({ file: url, type, name }),
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      let messageResponse;
+      
+      if (selectedUser) {
+        messageResponse = await axios.post(`${API_URL}/messages`, {
+          to: selectedUser._id,
+          content: JSON.stringify({ file: url, type, name, size: file.size }),
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      } else if (selectedGroup) {
+        messageResponse = await axios.post(`${API_URL}/messages`, {
+          group: selectedGroup._id,
+          content: JSON.stringify({ file: url, type, name, size: file.size }),
+        }, { headers: { Authorization: `Bearer ${token}` } });
+      }
       
       const returnedMessage = messageResponse.data;
 
-      if (socket && user?.id) socket.emit('sendMessage', returnedMessage);
+      if (socket && user?.id) {
+        if (selectedUser) {
+          socket.emit('sendMessage', returnedMessage);
+        } else if (selectedGroup) {
+          socket.emit('sendGroupMessage', {
+            groupId: selectedGroup._id,
+            content: returnedMessage.content,
+            type: 'file',
+            file: url
+          });
+        }
+      }
 
-      setMessages((prev) => [...prev, returnedMessage]);
+      if (selectedUser) {
+        setMessages((prev) => [...prev, returnedMessage]);
+        setLastMessages(prev => {
+          if (!selectedUser?._id) return prev;
+          return { ...prev, [selectedUser._id]: returnedMessage };
+        });
+        setUnreadCounts(prev => {
+          const updated = { ...prev, [selectedUser._id]: 0 };
+          try { localStorage.setItem('unreadCounts', JSON.stringify(updated)); } catch {}
+          return updated;
+        });
+        showSentMessageNotification(JSON.stringify({ file: url, type, name }), user.id, selectedUser._id);
+      } else if (selectedGroup) {
+        setGroupMessages((prev) => [...prev, returnedMessage]);
+        setLastMessages(prev => {
+          if (!selectedGroup?._id) return prev;
+          return { ...prev, [selectedGroup._id]: returnedMessage };
+        });
+      }
       
-      setLastMessages(prev => {
-        if (!selectedUser?._id) return prev;
-        return { ...prev, [selectedUser._id]: returnedMessage };
-      });
-      
-      setUnreadCounts(prev => {
-        const updated = { ...prev, [selectedUser._id]: 0 };
-        try { localStorage.setItem('unreadCounts', JSON.stringify(updated)); } catch {}
-        return updated;
-      });
-      
-      // Show notification for sent file
-      console.log('Calling showSentMessageNotification for file...');
-      showSentMessageNotification(JSON.stringify({ file: url, type, name }), user.id, selectedUser._id);
+      // Clear the file input
+      e.target.value = '';
+      if (file) {
+        saveMediaToIndexedDB(file, file.name);
+      }
     } catch (err) {
-      setError('Failed to upload file.');
+      console.error('File upload error:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      
+      let errorMessage = 'Failed to upload file.';
+      if (err.response?.status === 413) {
+        errorMessage = 'File is too large. Maximum size is 50MB.';
+      } else if (err.response?.status === 401) {
+        errorMessage = 'Authentication failed. Please log in again.';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
+      setError(errorMessage);
+      
+      // Clear the file input on error
+      e.target.value = '';
     }
   };
 
@@ -2344,8 +2431,8 @@ function App() {
       try {
         // This is a demo: in real apps, you need to register a credential and verify with server
         // Here, we just check if the browser supports it and prompt for biometric
-        await startAuthentication({ publicKey: { challenge: new Uint8Array([1,2,3]), timeout: 60000, userVerification: 'preferred', allowCredentials: [] } });
-        onUnlock();
+        // Biometric authentication is not implemented in this demo
+        setBioError('Biometric authentication is not available in this demo.');
       } catch (e) {
         setBioError('Biometric authentication failed or was cancelled.');
       }
@@ -2536,17 +2623,10 @@ function App() {
     }
   }, [nav, token]);
 
-  // Custom navigation handler to close message box when navigating to certain sidebar sections
+  // Custom navigation handler to close message box when navigating to calls or status
   const handleNav = (navTarget) => {
     setNav(navTarget);
-    if ([
-      'calls',
-      'status',
-      'favorite',
-      'trash',
-      'settings',
-      'profile',
-    ].includes(navTarget)) {
+    if (navTarget === 'calls' || navTarget === 'status') {
       setSelectedUser(null);
       setSelectedGroup(null);
       setMessages([]);
@@ -2566,9 +2646,6 @@ function App() {
   let chatListToShow = search.trim() ? searchResults : mergedSearchResults;
   if (nav === 'favorite') {
     chatListToShow = chatListToShow.filter((u) => favorites.includes(u._id));
-  }
-  if (nav === 'trash') {
-    chatListToShow = users.filter(u => u.deletionScheduled);
   }
 
   if (isLocked) {
@@ -2629,11 +2706,11 @@ function App() {
             PaperProps={{ sx: { minWidth: 180, borderRadius: 2, boxShadow: 3, bgcolor: darkMode ? '#222' : '#fff' } }}
           >
             <MenuItem onClick={() => { setLoginDialogOpen(true); handleNavMenuClose(); }} sx={{ gap: 1 }}>
-              <LoginIcon sx={{ color: darkMode ? '#fff' : '#1976d2' }} />
+              <LoginIcon sx={{ color: darkMode ? '#fff' : '#000' }} />
               Login
             </MenuItem>
             <MenuItem onClick={() => { setRegisterDialogOpen(true); handleNavMenuClose(); }} sx={{ gap: 1 }}>
-              <PersonAddIcon sx={{ color: darkMode ? '#fff' : '#1976d2' }} />
+              <PersonAddIcon sx={{ color: darkMode ? '#fff' : '#000' }} />
               Sign Up
             </MenuItem>
           </Menu>
@@ -3397,7 +3474,7 @@ function App() {
                 onMouseLeave={() => setMyStatusAvatarHover(false)}
                 sx={{ mr: 2 }}
               >
-                <Avatar src={user?.avatar} sx={{ width: 48, height: 48 }} />
+                <Avatar src={getFullUrl(user?.avatar)} sx={{ width: 48, height: 48 }} />
                 {myStatusAvatarHover && (
                   <Box
                     position="absolute"
@@ -3630,62 +3707,6 @@ function App() {
               />
             )}
           </Box>
-        ) : nav === 'trash' ? (
-          <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative' }}>
-            <Typography variant="h5" fontWeight={900} sx={{ color: darkMode ? '#fff' : '#222', letterSpacing: 1, mb: 2 }}>Trash</Typography>
-            {chatListToShow.length === 0 ? (
-              <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" py={6}>
-                <DeleteOutlineIcon sx={{ fontSize: 48, color: darkMode ? '#555' : '#ccc', mb: 2 }} />
-                <Typography variant="body1" color="textSecondary" align="center">
-                  No deleted users
-                </Typography>
-                <Typography variant="body2" color="textSecondary" align="center" sx={{ mt: 1 }}>
-                  Deleted users will appear here for 7 days before permanent removal.
-                </Typography>
-              </Box>
-            ) : (
-              <List sx={{ width: '100%', maxWidth: 400, bgcolor: darkMode ? '#000' : '#fff', borderRadius: 2, mb: 2 }}>
-                {chatListToShow.map(u => (
-                  <ListItem key={u._id} sx={{ borderRadius: 2, mb: 1, bgcolor: darkMode ? '#111' : '#f5f5f5', '&:hover': { bgcolor: darkMode ? '#222' : '#eee' } }}>
-                    <Avatar src={u.avatar} sx={{ mr: 2 }}>{!u.avatar && u.username ? u.username[0] : null}</Avatar>
-                    <ListItemText
-                      primary={<Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit' }}>{u.username}</Typography>}
-                      secondary={<Typography variant="body2" color="textSecondary">Scheduled for deletion: {u.deletionDate ? new Date(u.deletionDate).toLocaleString() : ''}</Typography>}
-                    />
-                    <Tooltip title="Restore User">
-                      <IconButton
-                        onClick={async () => {
-                          // Restore locally
-                          setUsers(prev => prev.map(user => user._id === u._id ? { ...user, deletionScheduled: false, deletionDate: null } : user));
-                          // Optionally, call backend to restore
-                          try {
-                            await axios.post(`${API_URL}/auth/cancel-delete-account`, { userId: u._id }, { headers: { Authorization: `Bearer ${token}` } });
-                          } catch (err) {
-                            setSnackbar({ message: 'Failed to restore user.', severity: 'error' });
-                          }
-                        }}
-                        color="primary"
-                        sx={{ color: '#25d366' }}
-                      >
-                        <UndoIcon />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Permanently Delete">
-                      <IconButton
-                        onClick={() => {
-                          setUserToPermanentlyDelete(u);
-                          setPermanentDeleteDialogOpen(true);
-                        }}
-                        color="error"
-                      >
-                        <DeleteOutlineIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </ListItem>
-                ))}
-              </List>
-            )}
-          </Box>
         ) : (
           <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative' }}>
             <Box display="flex" alignItems="center" mb={2} gap={1}>
@@ -3810,7 +3831,7 @@ function App() {
                       <Tooltip title={lastMsgContent} placement="right">
                         <ListItem button key={u._id} selected={selectedUser?._id === u._id} onClick={() => { setSelectedUser(u); setSelectedGroup(null); }} sx={{ borderRadius: 2, mb: 1 }}>
                           <Box position="relative" display="inline-block" mr={1}>
-                            <Avatar src={u.avatar} />
+                            <Avatar src={getFullUrl(u.avatar)} />
                             {isOnline && (
                               <Box position="absolute" bottom={2} right={2} width={8} height={8} bgcolor="#25d366" borderRadius="50%" border={`2px solid ${darkMode ? '#000' : '#fff'}`} />
                             )}
@@ -3899,7 +3920,7 @@ function App() {
                           }}
                         >
                           <Box position="relative" display="inline-block" mr={1}>
-                            <Avatar src={u.avatar} />
+                            <Avatar src={getFullUrl(u.avatar)} />
                             {isOnline && (
                               <Box position="absolute" bottom={2} right={2} width={8} height={8} bgcolor="#25d366" borderRadius="50%" border={`2px solid ${darkMode ? '#000' : '#fff'}`} />
                             )}
@@ -3954,9 +3975,9 @@ function App() {
                               sx={{ display: 'none' }}
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                // Mark user as scheduled for deletion (move to trash)
-                                const deletionDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-                                setUsers(prev => prev.map(user => user._id === u._id ? { ...user, deletionScheduled: true, deletionDate } : user));
+                                
+                                // Remove from local state
+                                setUsers(prev => prev.filter(user => user._id !== u._id));
                                 setMessages(prev => (selectedUser && selectedUser._id === u._id ? [] : prev));
                                 setLastMessages(prev => {
                                   const updated = { ...prev };
@@ -3972,14 +3993,16 @@ function App() {
                                   setSelectedUser(null);
                                   setMessages([]);
                                 }
-                                // Optionally, call backend to schedule deletion
+                                
+                                // Also remove from database contacts
                                 try {
-                                  await axios.delete(`${API_URL}/auth/delete-account`, {
-                                    headers: { Authorization: `Bearer ${token}` },
-                                    data: { userId: u._id }
+                                  await axios.delete(`${API_URL}/messages/${u._id}`, {
+                                    headers: { Authorization: `Bearer ${token}` }
                                   });
+                                  console.log('User removed from database contacts:', u.username);
                                 } catch (error) {
-                                  // Even if backend fails, keep the local change
+                                  // console.error('Error removing user from database contacts:', error);
+                                  // Even if database removal fails, keep the local removal
                                 }
                               }}
                               size="small"
@@ -4025,7 +4048,7 @@ function App() {
                               cursor: 'pointer',
                             }}
                           >
-                            <Avatar src={user.avatar} sx={{ mr: 2 }}>
+                            <Avatar src={getFullUrl(user.avatar)} sx={{ mr: 2 }}>
                               {!user.avatar && user.username ? user.username[0] : null}
                             </Avatar>
                             <ListItemText
@@ -4195,7 +4218,7 @@ function App() {
               {selectedUser && !isBlocked && (console.log('Rendering message box for selectedUser:', selectedUser),
                 <Box display="flex" alignItems="center" sx={{ cursor: 'pointer' }} onClick={() => { handleOpenProfileDialog(selectedUser); }}>
                   <Box position="relative" display="inline-block" mr={2}>
-                    <Avatar src={selectedUser.avatar || undefined}>
+                    <Avatar src={getFullUrl(selectedUser.avatar) || undefined}>
                       {!selectedUser.avatar && selectedUser.username ? selectedUser.username[0] : null}
                     </Avatar>
                     {/* Only show online indicator if NOT blocked */}
@@ -4218,7 +4241,7 @@ function App() {
               )}
               {selectedGroup && (
                 <Box display="flex" alignItems="center">
-                  <Avatar src={selectedGroup.avatar} sx={{ mr: 2, cursor: 'pointer' }} onClick={() => { handleOpenProfileDialog(selectedGroup); }} />
+                  <Avatar src={getFullUrl(selectedGroup.avatar)} sx={{ mr: 2, cursor: 'pointer' }} onClick={() => { handleOpenProfileDialog(selectedGroup); }} />
                   <Box>
                     <Typography fontWeight={600} sx={{ color: darkMode ? '#fff' : 'inherit' }}>{selectedGroup.name}</Typography>
                     <Typography variant="caption" color="textSecondary">Group</Typography>
@@ -4410,7 +4433,7 @@ function App() {
                 p={3}
                 pb={2} // Add bottom padding to prevent overlap with input
               >
-                {messages.map((msg, idx) => {
+                {(selectedUser ? messages : groupMessages).map((msg, idx) => {
                   let fileData = null;
                   try {
                     fileData = msg.content && typeof msg.content === 'string' && msg.content.startsWith('{') ? JSON.parse(msg.content) : null;
@@ -4433,14 +4456,280 @@ function App() {
                           marginRight: isMine ? 0 : 'auto',
                         }}>
                           {fileData ? (
-                            fileData.type === 'image' ? (
-                              <img src={fileData.file} alt={fileData.name || 'Image'} style={{ maxWidth: 200, borderRadius: 8 }} />
-                            ) : fileData.type === 'audio' ? (
-                              <audio controls src={fileData.file} style={{ width: 200 }} />
-                            ) : fileData.type === 'video' ? (
-                              <video controls src={fileData.file} style={{ maxWidth: 200, borderRadius: 8 }} />
+                            fileData.type.startsWith('image/') ? (
+                              <img src={`http://localhost:5001${fileData.file}`} alt={fileData.name || 'Image'} style={{ maxWidth: 200, borderRadius: 8 }} />
+                            ) : fileData.type.startsWith('audio/') ? (
+                              <audio controls src={`http://localhost:5001${fileData.file}`} style={{ width: 200 }} />
+                            ) : fileData.type.startsWith('video/') ? (
+                              <div style={{ maxWidth: 300, borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
+                                <video 
+                                  controls 
+                                  src={`http://localhost:5001${fileData.file}`} 
+                                  style={{ 
+                                    width: '100%', 
+                                    maxHeight: 200,
+                                    borderRadius: 8,
+                                    backgroundColor: '#000'
+                                  }}
+                                  preload="metadata"
+                                  onLoadStart={() => {
+                                    setVideoLoadingStates(prev => ({ ...prev, [`${msg._id}-${idx}`]: true }));
+                                  }}
+                                  onCanPlay={() => {
+                                    setVideoLoadingStates(prev => ({ ...prev, [`${msg._id}-${idx}`]: false }));
+                                  }}
+                                  onError={() => {
+                                    setVideoLoadingStates(prev => ({ ...prev, [`${msg._id}-${idx}`]: false }));
+                                    setVideoErrorStates(prev => ({ ...prev, [`${msg._id}-${idx}`]: true }));
+                                  }}
+                                />
+                                {videoLoadingStates[`${msg._id}-${idx}`] && (
+                                  <div style={{ 
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center',
+                                    backgroundColor: 'rgba(0,0,0,0.7)',
+                                    color: 'white',
+                                    borderRadius: 8
+                                  }}>
+                                    Loading video...
+                                  </div>
+                                )}
+                                {videoErrorStates[`${msg._id}-${idx}`] && (
+                                  <div style={{ 
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center',
+                                    backgroundColor: 'rgba(255,0,0,0.1)',
+                                    flexDirection: 'column',
+                                    borderRadius: 8
+                                  }}>
+                                    <div style={{ color: '#d32f2f', marginBottom: 8 }}>Video failed to load</div>
+                                    <a 
+                                      href={`http://localhost:5001${fileData.file}`} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      style={{ color: '#1976d2', textDecoration: 'underline' }}
+                                    >
+                                      Download video
+                                    </a>
+                                  </div>
+                                )}
+                                <div style={{ 
+                                  fontSize: '12px', 
+                                  color: '#666', 
+                                  marginTop: '4px',
+                                  wordBreak: 'break-word'
+                                }}>
+                                  {fileData.name || 'Video'}
+                                </div>
+                              </div>
+                            ) : fileData.type === 'application/pdf' ? (
+                              <div style={{ 
+                                border: '1px solid #ddd', 
+                                borderRadius: 8, 
+                                padding: 12, 
+                                backgroundColor: '#f9f9f9',
+                                maxWidth: 250
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 24, marginRight: 8 }}>📄</span>
+                                  <span style={{ fontWeight: 'bold' }}>PDF Document</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                                  {fileData.name || 'Document'}
+                                </div>
+                                <a 
+                                  href={`http://localhost:5001${fileData.file}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ 
+                                    color: '#1976d2', 
+                                    textDecoration: 'underline',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  Open PDF
+                                </a>
+                              </div>
+                            ) : fileData.type.startsWith('text/') ? (
+                              <div style={{ 
+                                border: '1px solid #ddd', 
+                                borderRadius: 8, 
+                                padding: 12, 
+                                backgroundColor: '#f9f9f9',
+                                maxWidth: 250
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 24, marginRight: 8 }}>📝</span>
+                                  <span style={{ fontWeight: 'bold' }}>Text File</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                                  {fileData.name || 'Text Document'}
+                                </div>
+                                <a 
+                                  href={`http://localhost:5001${fileData.file}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ 
+                                    color: '#1976d2', 
+                                    textDecoration: 'underline',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  View Text
+                                </a>
+                              </div>
+                            ) : fileData.type.includes('word') || fileData.type.includes('document') ? (
+                              <div style={{ 
+                                border: '1px solid #ddd', 
+                                borderRadius: 8, 
+                                padding: 12, 
+                                backgroundColor: '#f9f9f9',
+                                maxWidth: 250
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 24, marginRight: 8 }}>📄</span>
+                                  <span style={{ fontWeight: 'bold' }}>Word Document</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                                  {fileData.name || 'Document'}
+                                </div>
+                                <a 
+                                  href={`http://localhost:5001${fileData.file}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ 
+                                    color: '#1976d2', 
+                                    textDecoration: 'underline',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  Download Document
+                                </a>
+                              </div>
+                            ) : fileData.type.includes('excel') || fileData.type.includes('spreadsheet') ? (
+                              <div style={{ 
+                                border: '1px solid #ddd', 
+                                borderRadius: 8, 
+                                padding: 12, 
+                                backgroundColor: '#f9f9f9',
+                                maxWidth: 250
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 24, marginRight: 8 }}>📊</span>
+                                  <span style={{ fontWeight: 'bold' }}>Excel Spreadsheet</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                                  {fileData.name || 'Spreadsheet'}
+                                </div>
+                                <a 
+                                  href={`http://localhost:5001${fileData.file}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ 
+                                    color: '#1976d2', 
+                                    textDecoration: 'underline',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  Download Spreadsheet
+                                </a>
+                              </div>
+                            ) : fileData.type.includes('powerpoint') || fileData.type.includes('presentation') ? (
+                              <div style={{ 
+                                border: '1px solid #ddd', 
+                                borderRadius: 8, 
+                                padding: 12, 
+                                backgroundColor: '#f9f9f9',
+                                maxWidth: 250
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 24, marginRight: 8 }}>📈</span>
+                                  <span style={{ fontWeight: 'bold' }}>PowerPoint Presentation</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                                  {fileData.name || 'Presentation'}
+                                </div>
+                                <a 
+                                  href={`http://localhost:5001${fileData.file}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ 
+                                    color: '#1976d2', 
+                                    textDecoration: 'underline',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  Download Presentation
+                                </a>
+                              </div>
+                            ) : fileData.type.includes('zip') || fileData.type.includes('rar') || fileData.type.includes('archive') ? (
+                              <div style={{ 
+                                border: '1px solid #ddd', 
+                                borderRadius: 8, 
+                                padding: 12, 
+                                backgroundColor: '#f9f9f9',
+                                maxWidth: 250
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 24, marginRight: 8 }}>📦</span>
+                                  <span style={{ fontWeight: 'bold' }}>Compressed File</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                                  {fileData.name || 'Archive'}
+                                </div>
+                                <a 
+                                  href={`http://localhost:5001${fileData.file}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ 
+                                    color: '#1976d2', 
+                                    textDecoration: 'underline',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  Download Archive
+                                </a>
+                              </div>
                             ) : (
-                              <a href={fileData.file} target="_blank" rel="noopener noreferrer">{fileData.name || 'File'}</a>
+                              <div style={{ 
+                                border: '1px solid #ddd', 
+                                borderRadius: 8, 
+                                padding: 12, 
+                                backgroundColor: '#f9f9f9',
+                                maxWidth: 250
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                                  <span style={{ fontSize: 24, marginRight: 8 }}>📎</span>
+                                  <span style={{ fontWeight: 'bold' }}>File</span>
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#666', marginBottom: 8 }}>
+                                  {fileData.name || 'File'}
+                                </div>
+                                <a 
+                                  href={`http://localhost:5001${fileData.file}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  style={{ 
+                                    color: '#1976d2', 
+                                    textDecoration: 'underline',
+                                    fontSize: '12px'
+                                  }}
+                                >
+                                  Download File
+                                </a>
+                              </div>
                             )
                           ) : (
                             msg.content
@@ -4489,7 +4778,7 @@ function App() {
             )
           )}
           {/* WhatsApp-style Message Input */}
-          {selectedUser && !isBlocked && (
+          {(selectedUser || selectedGroup) && !isBlocked && (
             <Box
               display="flex"
               alignItems="center"
@@ -4901,7 +5190,7 @@ function App() {
                       }
                     }}
                   >
-                    <Avatar src={user.avatar} sx={{ mr: 2 }}>
+                    <Avatar src={getFullUrl(user.avatar)} sx={{ mr: 2 }}>
                       {!user.avatar && user.username ? user.username[0] : null}
                     </Avatar>
                     <ListItemText
@@ -4957,35 +5246,6 @@ function App() {
           </MuiAlert>
         </Snackbar>
       )}
-      {/* Permanent Delete Dialog */}
-      <Dialog open={permanentDeleteDialogOpen} onClose={() => setPermanentDeleteDialogOpen(false)}>
-        <DialogTitle>Permanently Delete User</DialogTitle>
-        <DialogContent>
-          <Typography>Are you sure you want to permanently delete this user? This action cannot be undone.</Typography>
-          <Typography sx={{ mt: 2 }} color="error">User: {userToPermanentlyDelete?.username}</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPermanentDeleteDialogOpen(false)} sx={{ color: '#25d366' }}>Cancel</Button>
-          <Button
-            onClick={async () => {
-              if (!userToPermanentlyDelete) return;
-              try {
-                await axios.delete(`${API_URL}/messages/users/${userToPermanentlyDelete._id}`, { headers: { Authorization: `Bearer ${token}` } });
-                setUsers(prev => prev.filter(user => user._id !== userToPermanentlyDelete._id));
-                setSnackbar({ message: 'User permanently deleted.', severity: 'success' });
-              } catch (err) {
-                setSnackbar({ message: 'Failed to permanently delete user.', severity: 'error' });
-              }
-              setPermanentDeleteDialogOpen(false);
-              setUserToPermanentlyDelete(null);
-            }}
-            color="error"
-            variant="contained"
-          >
-            Permanently Delete
-          </Button>
-        </DialogActions>
-      </Dialog>
     </ThemeProvider>
   );
 }

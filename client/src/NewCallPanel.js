@@ -15,6 +15,12 @@ import "./NewCallPanel.css";
 
 const SOCIALX_GREEN = '#25d366';
 
+const getFullUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `http://localhost:5001${url}`;
+};
+
 export default function NewCallPanel({ open, onClose, contacts = [], frequentlyContacted = [] }) {
   const [search, setSearch] = useState("");
   const [selectedContacts, setSelectedContacts] = useState([]);
@@ -104,7 +110,7 @@ export default function NewCallPanel({ open, onClose, contacts = [], frequentlyC
             {selectedContacts.map((contact, idx) => (
               <Avatar
                 key={contact._id || contact.id || contact.username || contact.name || idx}
-                src={contact.avatar}
+                src={getFullUrl(contact.avatar)}
                 sx={{ width: 32, height: 32, border: `2px solid ${panelBg}`, bgcolor: '#444', fontSize: 16, mr: 0.5 }}
               >
                 {(!contact.avatar && (contact.username ? contact.username[0] : (contact.name ? contact.name[0] : '?')))}
@@ -226,7 +232,7 @@ export default function NewCallPanel({ open, onClose, contacts = [], frequentlyC
                       color: isDark ? '#fff' : '#222'
                     }}
                   >
-                    {c.avatar ? <img src={c.avatar} alt={c.username || c.name} style={{width: '100%', height: '100%', borderRadius: '50%'}} /> : (c.username ? c.username[0] : (c.name ? c.name[0] : '?'))}
+                    {c.avatar ? <img src={getFullUrl(c.avatar)} alt={c.username || c.name} style={{width: '100%', height: '100%', borderRadius: '50%'}} /> : (c.username ? c.username[0] : (c.name ? c.name[0] : '?'))}
                   </div>
                   <div>
                     <div className="contact-name" style={{ color: panelText }}>{c.username || c.name}</div>
@@ -263,7 +269,7 @@ export default function NewCallPanel({ open, onClose, contacts = [], frequentlyC
                       color: isDark ? '#fff' : '#222'
                     }}
                   >
-                    {c.avatar ? <img src={c.avatar} alt={c.username || c.name} style={{width: '100%', height: '100%', borderRadius: '50%'}} /> : (c.username ? c.username[0] : (c.name ? c.name[0] : '?'))}
+                    {c.avatar ? <img src={getFullUrl(c.avatar)} alt={c.username || c.name} style={{width: '100%', height: '100%', borderRadius: '50%'}} /> : (c.username ? c.username[0] : (c.name ? c.name[0] : '?'))}
                   </div>
                   <div>
                     <div className="contact-name" style={{ color: panelText }}>{c.username || c.name}</div>

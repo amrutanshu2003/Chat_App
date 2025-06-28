@@ -363,32 +363,31 @@ router.put('/profile', upload.single('avatar'), async (req, res) => {
 // Upload avatar endpoint (separate from profile update)
 router.post('/upload-avatar', upload.single('avatar'), async (req, res) => {
   try {
+    console.log('Received upload-avatar request');
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    
     if (!token) {
+      console.log('No token provided');
       return res.status(401).json({ 
         success: false, 
         message: 'Access denied. No token provided.' 
       });
     }
-
     if (!req.file) {
+      console.log('No image file provided');
       return res.status(400).json({ 
         success: false, 
         message: 'No image file provided' 
       });
     }
-
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId);
-    
     if (!user) {
+      console.log('User not found for token');
       return res.status(404).json({ 
         success: false, 
         message: 'User not found' 
       });
     }
-
     // Delete old avatar file if it exists
     if (user.avatar && user.avatar !== '/uploads/default-avatar.png') {
       const fs = require('fs');
@@ -397,22 +396,25 @@ router.post('/upload-avatar', upload.single('avatar'), async (req, res) => {
         fs.unlinkSync(oldAvatarPath);
       }
     }
-    
     // Update user's avatar
     user.avatar = `/uploads/${req.file.filename}`;
     await user.save();
-
+    console.log('Avatar uploaded successfully:', user.avatar);
     res.json({
       success: true,
       message: 'Avatar uploaded successfully',
       url: user.avatar
     });
-
   } catch (error) {
     console.error('Avatar upload error:', error);
+    let message = 'Server error during avatar upload';
+    if (error.name === 'JsonWebTokenError') {
+      message = 'Invalid or expired token';
+      return res.status(401).json({ success: false, message });
+    }
     res.status(500).json({ 
       success: false, 
-      message: 'Server error during avatar upload' 
+      message
     });
   }
 });
@@ -509,14 +511,7 @@ router.delete('/delete-account', async (req, res) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // Support deleting another user if userId is provided in body (for chat trash)
-    const { userId } = req.body || {};
-    let user;
-    if (userId) {
-      user = await User.findById(userId);
-    } else {
-      user = await User.findById(decoded.userId);
-    }
+    const user = await User.findById(decoded.userId);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     // Schedule deletion for 7 days from now
     user.deletionScheduled = true;
@@ -535,14 +530,7 @@ router.post('/cancel-delete-account', async (req, res) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ success: false, message: 'No token provided.' });
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // Support restoring another user if userId is provided in body (for chat trash)
-    const { userId } = req.body || {};
-    let user;
-    if (userId) {
-      user = await User.findById(userId);
-    } else {
-      user = await User.findById(decoded.userId);
-    }
+    const user = await User.findById(decoded.userId);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     user.deletionScheduled = false;
     user.deletionDate = null;

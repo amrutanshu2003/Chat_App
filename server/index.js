@@ -7,7 +7,21 @@ const multer = require('multer');
 const path = require('path');
 const User = require('./models/User');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
+
+// Middleware to verify JWT
+function auth(req, res, next) {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ message: 'Token is not valid' });
+  }
+}
 
 // Set default environment variables if not provided
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
@@ -39,16 +53,9 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  },
   fileFilter: function (req, file, cb) {
-    // Accept images only
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed!'), false);
-    }
+    // Accept all file types
+    cb(null, true);
   }
 });
 
@@ -63,6 +70,29 @@ app.use('/uploads', express.static('uploads'));
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/calls', callsRoute);
+
+// File upload route
+app.post('/api/messages/upload', auth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const fileUrl = `/uploads/${req.file.filename}`;
+    const fileType = req.file.mimetype;
+    const fileName = req.file.originalname;
+
+    res.json({
+      url: fileUrl,
+      type: fileType,
+      name: fileName,
+      size: req.file.size
+    });
+  } catch (err) {
+    console.error('File upload error:', err);
+    res.status(500).json({ message: 'Failed to upload file' });
+  }
+});
 
 // Root endpoint
 app.get('/', (req, res) => {

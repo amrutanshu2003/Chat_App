@@ -21,6 +21,14 @@ import AccountCircleOutlinedIcon from '@mui/icons-material/AccountCircleOutlined
 import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNoneOutlined';
 import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
 import TuneOutlinedIcon from '@mui/icons-material/TuneOutlined';
+import StorageIcon from '@mui/icons-material/Storage';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import CloudOffIcon from '@mui/icons-material/CloudOff';
+import FolderIcon from '@mui/icons-material/Folder';
+import DataUsageIcon from '@mui/icons-material/DataUsage';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import WarningIcon from '@mui/icons-material/Warning';
 import { useTheme } from '@mui/material/styles';
 import PhotoCameraOutlinedIcon from '@mui/icons-material/PhotoCameraOutlined';
 import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
@@ -46,6 +54,8 @@ import { styled } from '@mui/material/styles';
 import SeasonalThemeSelector from './SeasonalThemeSelector';
 import AdvancedPersonalization from './AdvancedPersonalization';
 import MoodThemeSelector from './MoodThemeSelector';
+import LinearProgress from '@mui/material/LinearProgress';
+import { useCallback } from 'react';
 
 // TabPanel component
 function TabPanel({ children, value, index, ...other }) {
@@ -121,6 +131,191 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
   const [chatSearch, setChatSearch] = useState('');
   const [personalizationDialogOpen, setPersonalizationDialogOpen] = useState(false);
   const [personalizationTab, setPersonalizationTab] = useState(0);
+  const [storageDialogOpen, setStorageDialogOpen] = useState(false);
+  const [storageInfo, setStorageInfo] = useState({
+    quota: 0,
+    usage: 0,
+    percent: 0,
+  });
+  const [cacheInfo, setCacheInfo] = useState({
+    chatCacheBytes: 0,
+    mediaCacheBytes: 0,
+    mediaCacheCount: 0,
+    mediaImageBytes: 0,
+    mediaVideoBytes: 0,
+    mediaAudioBytes: 0,
+    mediaPdfBytes: 0,
+    appDataBytes: 0,
+    cacheBytes: 0,
+  });
+  const [serverMediaStats, setServerMediaStats] = useState({
+    total: 0,
+    image: 0,
+    video: 0,
+    audio: 0,
+    pdf: 0,
+    imageCount: 0,
+    videoCount: 0,
+    audioCount: 0,
+    pdfCount: 0,
+  });
+
+  const fetchStorageInfo = useCallback(() => {
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then(({ quota, usage }) => {
+        setStorageInfo({
+          quota: quota || 0,
+          usage: usage || 0,
+          percent: quota ? (usage / quota) * 100 : 0,
+        });
+      });
+    }
+  }, []);
+
+  const fetchCacheInfo = useCallback(async () => {
+    // Chat Cache: localStorage keys (including links in chat messages)
+    let chatCacheKeys = ['lastMessages', 'unreadCounts', 'lastSelectedChat'];
+    let chatCacheBytes = 0;
+    chatCacheKeys.forEach(key => {
+      const value = localStorage.getItem(key);
+      if (value) {
+        chatCacheBytes += new Blob([value]).size;
+      }
+    });
+
+    // Media Cache: Cache API entries
+    let mediaCacheBytes = 0;
+    let mediaCacheCount = 0;
+    let mediaImageBytes = 0;
+    let mediaVideoBytes = 0;
+    let mediaAudioBytes = 0;
+    let mediaPdfBytes = 0;
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      for (const name of cacheNames) {
+        const cache = await caches.open(name);
+        const requests = await cache.keys();
+        mediaCacheCount += requests.length;
+        for (const req of requests) {
+          try {
+            const res = await cache.match(req);
+            if (res) {
+              const contentType = res.headers.get('content-type') || '';
+              const blob = await res.clone().blob();
+              const size = blob.size;
+              mediaCacheBytes += size;
+              if (contentType.startsWith('image/')) {
+                mediaImageBytes += size;
+              } else if (contentType.startsWith('video/')) {
+                mediaVideoBytes += size;
+              } else if (contentType.startsWith('audio/')) {
+                mediaAudioBytes += size;
+              } else if (contentType === 'application/pdf' || req.url.endsWith('.pdf')) {
+                mediaPdfBytes += size;
+              }
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+    }
+
+    // App Data: all other localStorage keys except essentials and chat cache
+    let appDataBytes = 0;
+    const essentialKeys = ['token', 'user', 'applock_enabled', 'applock_timeout', 'lockscreen_pin'];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!essentialKeys.includes(key) && !chatCacheKeys.includes(key)) {
+        const value = localStorage.getItem(key);
+        if (value) {
+          appDataBytes += new Blob([value]).size;
+        }
+      }
+    }
+
+    // IndexedDB media files
+    let indexedDbMediaBytes = 0;
+    let indexedDbMediaCount = 0;
+    const dbOpen = indexedDB.open('media');
+    dbOpen.onsuccess = function(event) {
+      const db = event.target.result;
+      if (db.objectStoreNames.contains('files')) {
+        const tx = db.transaction('files', 'readonly');
+        const store = tx.objectStore('files');
+        const req = store.openCursor();
+        req.onsuccess = function(e) {
+          const cursor = e.target.result;
+          if (cursor) {
+            const value = cursor.value;
+            if (value && value.blob) {
+              const size = value.blob.size;
+              indexedDbMediaBytes += size;
+              indexedDbMediaCount++;
+              // Try to detect type by fileName or blob.type
+              const fileName = value.fileName || '';
+              const type = value.blob.type || '';
+              if (type.startsWith('image/') || fileName.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/i)) {
+                mediaImageBytes += size;
+              } else if (type.startsWith('video/') || fileName.match(/\.(mp4|webm|mov|avi|mkv)$/i)) {
+                mediaVideoBytes += size;
+              } else if (type.startsWith('audio/') || fileName.match(/\.(mp3|wav|ogg|m4a)$/i)) {
+                mediaAudioBytes += size;
+              } else if (type === 'application/pdf' || fileName.match(/\.pdf$/i)) {
+                mediaPdfBytes += size;
+              }
+            }
+            cursor.continue();
+          } else {
+            // When done, update state
+            setCacheInfo(prev => ({
+              ...prev,
+              mediaCacheBytes,
+              mediaCacheCount,
+              mediaImageBytes,
+              mediaVideoBytes,
+              mediaAudioBytes,
+              mediaPdfBytes,
+            }));
+          }
+        };
+      } else {
+        // If no object store, still update state to zero
+        setCacheInfo(prev => ({
+          ...prev,
+          mediaCacheBytes: 0,
+          mediaCacheCount: 0,
+          mediaImageBytes: 0,
+          mediaVideoBytes: 0,
+          mediaAudioBytes: 0,
+          mediaPdfBytes: 0,
+        }));
+      }
+    };
+
+    setCacheInfo({
+      chatCacheBytes,
+      mediaCacheBytes,
+      mediaCacheCount,
+      mediaImageBytes,
+      mediaVideoBytes,
+      mediaAudioBytes,
+      mediaPdfBytes,
+      appDataBytes,
+      cacheBytes: chatCacheBytes + mediaCacheBytes + appDataBytes,
+    });
+  }, []);
+
+  useEffect(() => {
+    fetchStorageInfo();
+    fetchCacheInfo();
+  }, [fetchStorageInfo, fetchCacheInfo]);
+
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
 
   const handleAvatarClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -213,6 +408,24 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
     setAppLockTimeout(e.target.value);
     localStorage.setItem('applock_timeout', e.target.value);
   };
+
+  const handleStorageClick = () => {
+    setStorageDialogOpen(true);
+    handleMenuClose();
+  };
+
+  useEffect(() => {
+    if (storageDialogOpen) {
+      fetch('/api/messages/media/usage', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+        .then(res => res.json())
+        .then(setServerMediaStats)
+        .catch(() => {});
+    }
+  }, [storageDialogOpen]);
 
   return (
     <Box position="relative" display="flex" flexDirection="column" alignItems={expanded ? 'flex-start' : 'center'}
@@ -446,23 +659,25 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           <ListItemIcon><LockIcon sx={{ color: appLockEnabled ? '#25d366' : 'inherit' }} /></ListItemIcon>
           App Lock
         </MenuItem>
-        <MenuItem onClick={handleGeneralClick}>
+        <MenuItem onClick={handleGeneralClick} sx={{ mb: 1 }}>
           <ListItemIcon><TuneOutlinedIcon /></ListItemIcon>
           General
         </MenuItem>
-        <MenuItem onClick={() => setAccountDialogOpen(true)}>
+        <MenuItem onClick={() => setAccountDialogOpen(true)} sx={{ mb: 1 }}>
           <ListItemIcon><AccountCircleOutlinedIcon /></ListItemIcon>
           Account
         </MenuItem>
-        <MenuItem onClick={() => setChatMenuOpen(true)} sx={{ mb: 1 }}>
-          <ListItemIcon><ChatOutlinedIcon /></ListItemIcon>
-          Chat
+        <MenuItem onClick={handleStorageClick} sx={{ mb: 1 }}>
+          <ListItemIcon>
+            <StorageIcon />
+          </ListItemIcon>
+          Storage
         </MenuItem>
         <MenuItem onClick={() => { onNotificationSettings(); handleMenuClose(); }} sx={{ mb: 1 }}>
           <ListItemIcon><NotificationsNoneOutlinedIcon /></ListItemIcon>
           Notification
         </MenuItem>
-        <MenuItem onClick={() => { setPersonalizationDialogOpen(true); }} sx={{ mb: 1 }}>
+        <MenuItem onClick={() => { setPersonalizationDialogOpen(true); }} sx={{ mb: 2 }}>
           <ListItemIcon><PaletteOutlinedIcon /></ListItemIcon>
           Personalization
         </MenuItem>
@@ -712,7 +927,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
               }
               try {
                 const token = localStorage.getItem('token');
-                const res = await fetch('http://localhost:5000/api/auth/change-password', {
+                const res = await fetch('http://localhost:5001/api/auth/change-password', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -761,7 +976,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
               setDeleteError('');
               try {
                 const token = localStorage.getItem('token');
-                const res = await fetch('http://localhost:5000/api/auth/delete-account', {
+                const res = await fetch('http://localhost:5001/api/auth/delete-account', {
                   method: 'DELETE',
                   headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -1124,8 +1339,210 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Storage Dialog */}
+      <Dialog
+        open={storageDialogOpen}
+        onClose={() => setStorageDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: darkMode ? '#222' : '#fff',
+            color: darkMode ? '#fff' : '#222',
+            borderRadius: 3,
+            boxShadow: 8
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 2,
+          borderBottom: `1px solid ${darkMode ? '#444' : '#e0e0e0'}`
+        }}>
+          <StorageIcon sx={{ color: '#25d366' }} />
+          <Typography variant="h6" fontWeight={700}>
+            Storage & Cache
+          </Typography>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          {/* Storage Overview */}
+          <Box sx={{ mb: 3, p: 2, bgcolor: darkMode ? 'rgba(37,211,102,0.1)' : 'rgba(37,211,102,0.05)', borderRadius: 2, border: `1px solid ${darkMode ? 'rgba(37,211,102,0.2)' : 'rgba(37,211,102,0.1)'}` }}>
+            <Box display="flex" alignItems="center" gap={2} mb={2}>
+              <DataUsageIcon sx={{ color: '#25d366' }} />
+              <Typography variant="h6" fontWeight={600}>Device Storage</Typography>
+            </Box>
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+              <Box>
+                <Typography variant="body2" color="textSecondary">Total Storage</Typography>
+                <Typography variant="h6" fontWeight={700}>{formatBytes(storageInfo.quota)}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="textSecondary">Used</Typography>
+                <Typography variant="h6" fontWeight={700} sx={{ color: '#e53935' }}>
+                  {formatBytes(cacheInfo.chatCacheBytes + cacheInfo.appDataBytes)}
+                  <Typography component="span" variant="body2" sx={{ color: '#e53935', ml: 1, fontWeight: 400 }}>
+                    (Cache: {formatBytes(cacheInfo.cacheBytes)})
+                  </Typography>
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="textSecondary">Available</Typography>
+                <Typography variant="h6" fontWeight={700} sx={{ color: '#25d366' }}>{formatBytes(storageInfo.quota - storageInfo.usage)}</Typography>
+              </Box>
+            </Box>
+            <LinearProgress 
+              variant="determinate" 
+              value={storageInfo.percent} 
+              sx={{ height: 8, borderRadius: 5, bgcolor: darkMode ? '#444' : '#e0e0e0', my: 1 }}
+            />
+            <Typography variant="body2" color="textSecondary" mt={1}>
+              {storageInfo.percent.toFixed(2)}% of device storage used
+            </Typography>
+          </Box>
+
+          {/* Cache Management */}
+          <Typography variant="h6" fontWeight={600} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <DeleteSweepIcon sx={{ color: '#25d366' }} />
+            Cache Management
+          </Typography>
+          
+          <Box sx={{ mb: 3 }}>
+            <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ p: 2, bgcolor: darkMode ? '#333' : '#f5f5f5', borderRadius: 2, mb: 1 }}>
+              <Box display="flex" alignItems="center" gap={2}>
+                <FolderIcon sx={{ color: '#25d366' }} />
+                <Box>
+                  <Typography variant="body1" fontWeight={500}>Chat Cache</Typography>
+                  <Typography variant="body2" color="textSecondary">Messages, media, and chat data</Typography>
+                </Box>
+              </Box>
+              <Box textAlign="right">
+                <Typography variant="body1" fontWeight={600}>{formatBytes(cacheInfo.chatCacheBytes)}</Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => {
+                    localStorage.removeItem('lastMessages');
+                    localStorage.removeItem('unreadCounts');
+                    localStorage.removeItem('lastSelectedChat');
+                    alert('Chat cache cleared successfully!');
+                    fetchCacheInfo();
+                    setTimeout(() => fetchStorageInfo(), 200);
+                  }}
+                  sx={{ 
+                    mt: 1,
+                    color: '#25d366',
+                    borderColor: '#25d366',
+                    '&:hover': { bgcolor: 'rgba(37,211,102,0.1)' }
+                  }}
+                >
+                  Clear
+                </Button>
+              </Box>
+            </Box>
+
+            <Box display="flex" justifyContent="space-between" alignItems="center" sx={{ p: 2, bgcolor: darkMode ? '#333' : '#f5f5f5', borderRadius: 2 }}>
+              <Box display="flex" alignItems="center" gap={2}>
+                <DataUsageIcon sx={{ color: '#25d366' }} />
+                <Box>
+                  <Typography variant="body1" fontWeight={500}>App Data</Typography>
+                  <Typography variant="body2" color="textSecondary">Settings, preferences, and user data</Typography>
+                </Box>
+              </Box>
+              <Box textAlign="right">
+                <Typography variant="body1" fontWeight={600}>{formatBytes(cacheInfo.appDataBytes)}</Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={() => {
+                    const essentialKeys = ['token', 'user', 'applock_enabled', 'applock_timeout', 'lockscreen_pin'];
+                    for (let i = 0; i < localStorage.length; i++) {
+                      const key = localStorage.key(i);
+                      if (!essentialKeys.includes(key) && !['lastMessages', 'unreadCounts', 'lastSelectedChat'].includes(key)) {
+                        localStorage.removeItem(key);
+                      }
+                    }
+                    alert('App data cleared successfully!');
+                    fetchStorageInfo();
+                    fetchCacheInfo();
+                  }}
+                  sx={{ 
+                    mt: 1,
+                    color: '#25d366',
+                    borderColor: '#25d366',
+                    '&:hover': { bgcolor: 'rgba(37,211,102,0.1)' }
+                  }}
+                >
+                  Clear
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+
+          {/* Quick Actions */}
+          <Typography variant="h6" fontWeight={600} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CheckCircleIcon sx={{ color: '#25d366' }} />
+            Quick Actions
+          </Typography>
+          
+          <Box display="flex" gap={2} flexWrap="wrap">
+            <Button
+              variant="contained"
+              startIcon={<DeleteSweepIcon />}
+              onClick={() => {
+                localStorage.clear();
+                if ('caches' in window) {
+                  caches.keys().then(names => {
+                    names.forEach(name => {
+                      caches.delete(name);
+                    });
+                  }).finally(() => { fetchStorageInfo(); fetchCacheInfo(); });
+                } else {
+                  fetchStorageInfo();
+                  fetchCacheInfo();
+                }
+                alert('All cache cleared successfully!');
+              }}
+              sx={{ 
+                bgcolor: '#25d366',
+                '&:hover': { bgcolor: '#1ea952' },
+                flex: 1,
+                minWidth: 150
+              }}
+            >
+              Clear All Cache
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={() => {
+                window.location.reload();
+              }}
+              sx={{ 
+                color: '#25d366',
+                borderColor: '#25d366',
+                '&:hover': { bgcolor: 'rgba(37,211,102,0.1)' },
+                flex: 1,
+                minWidth: 150
+              }}
+            >
+              Refresh App
+            </Button>
+          </Box>
+
+          {/* Warning */}
+          <Box sx={{ mt: 3, p: 2, bgcolor: darkMode ? 'rgba(255,193,7,0.1)' : 'rgba(255,193,7,0.05)', borderRadius: 2, border: `1px solid ${darkMode ? 'rgba(255,193,7,0.2)' : 'rgba(255,193,7,0.1)'}` }}>
+            <Typography variant="body2" color="textSecondary">
+              Warning: Clearing all cache will remove all data and settings.
+            </Typography>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
 
-export default Sidebar; 
+export default Sidebar;

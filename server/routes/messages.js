@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const Group = require('../models/Group');
+const mongoose = require('mongoose');
 
 const router = express.Router();
 
@@ -71,13 +72,31 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
+    let actualMessageType = messageType;
+    let actualFileUrl = fileUrl;
+    let actualFileName = fileName;
+    let actualFileSize = fileSize;
+
+    if (content && typeof content === 'string' && content.startsWith('{"file":')) {
+      try {
+        const fileObj = JSON.parse(content);
+        actualFileUrl = fileObj.file || '';
+        actualFileName = fileObj.file ? fileObj.file.split('/').pop() : '';
+        actualFileSize = fileObj.size || 0;
+        if (fileObj.type && fileObj.type.startsWith('image/')) actualMessageType = 'image';
+        else if (fileObj.type && fileObj.type.startsWith('video/')) actualMessageType = 'video';
+        else if (fileObj.type && fileObj.type.startsWith('audio/')) actualMessageType = 'audio';
+        else if (fileObj.type && fileObj.type === 'application/pdf') actualMessageType = 'file';
+      } catch (e) {}
+    }
+
     const messageData = {
       from: senderId,
       content,
-      messageType,
-      fileUrl: fileUrl || '',
-      fileName: fileName || '',
-      fileSize: fileSize || 0,
+      messageType: actualMessageType,
+      fileUrl: actualFileUrl,
+      fileName: actualFileName,
+      fileSize: actualFileSize,
       replyTo: replyTo || null
     };
 
@@ -161,7 +180,7 @@ router.get('/:id', auth, async (req, res) => {
 router.get('/users/all', auth, async (req, res) => {
   try {
     // Get all contacts for the current user
-    const user = await User.findById(req.user.userId).populate('contacts', 'username email avatar about lastSeen deletionScheduled deletionDate');
+    const user = await User.findById(req.user.userId).populate('contacts', 'username email avatar about lastSeen');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     // Format user list
@@ -171,9 +190,7 @@ router.get('/users/all', auth, async (req, res) => {
       email: u.email,
       avatar: u.avatar,
       about: u.about,
-      lastSeen: u.lastSeen,
-      deletionScheduled: u.deletionScheduled,
-      deletionDate: u.deletionDate
+      lastSeen: u.lastSeen
     }));
 
     res.json(userList);
@@ -193,7 +210,7 @@ router.get('/users/available', auth, async (req, res) => {
         username: { $regex: q, $options: 'i' },
         _id: { $ne: req.user.userId } // Exclude current user
       },
-      'username email avatar about lastSeen deletionScheduled deletionDate'
+      'username email avatar about lastSeen'
     );
     res.json(users);
   } catch (err) {
@@ -513,19 +530,49 @@ router.post('/:messageId/reactions', auth, async (req, res) => {
   }
 });
 
-// Permanently delete a user from all contacts (but not from the database)
-router.delete('/users/:id', auth, async (req, res) => {
+// Get media usage stats for the current user
+router.get('/media/usage', auth, async (req, res) => {
   try {
-    const { id } = req.params;
-    // Remove this user from all other users' contacts
-    await User.updateMany(
-      { contacts: id },
-      { $pull: { contacts: id } }
-    );
-    // Do NOT delete the user from the database
-    res.json({ message: 'User removed from all contacts (chat list).' });
+    const userId = req.user.userId;
+    const userObjectId = mongoose.Types.ObjectId(userId);
+    const matchStage = {
+      $or: [
+        { from: userObjectId },
+        { to: userObjectId }
+      ],
+      fileSize: { $gt: 0 },
+      messageType: { $in: ['image', 'video', 'audio', 'pdf'] }
+    };
+
+    const groupStage = {
+      _id: '$messageType',
+      totalSize: { $sum: '$fileSize' },
+      count: { $sum: 1 }
+    };
+
+    const results = await Message.aggregate([
+      { $match: matchStage },
+      { $group: groupStage }
+    ]);
+
+    let total = 0, image = 0, video = 0, audio = 0, pdf = 0;
+    let imageCount = 0, videoCount = 0, audioCount = 0, pdfCount = 0;
+    results.forEach(r => {
+      total += r.totalSize;
+      if (r._id === 'image') { image = r.totalSize; imageCount = r.count; }
+      if (r._id === 'video') { video = r.totalSize; videoCount = r.count; }
+      if (r._id === 'audio') { audio = r.totalSize; audioCount = r.count; }
+      if (r._id === 'pdf') { pdf = r.totalSize; pdfCount = r.count; }
+    });
+
+    res.json({
+      total,
+      image, video, audio, pdf,
+      imageCount, videoCount, audioCount, pdfCount
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('Media usage error:', err);
+    res.status(500).json({ error: 'Failed to fetch media usage' });
   }
 });
 
