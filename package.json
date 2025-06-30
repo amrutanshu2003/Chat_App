@@ -4,9 +4,9 @@
   "description": "Real-time chat application with video calling",
   "main": "index.js",
   "scripts": {
-    "start": "npm run start:server",
-    "start:server": "cd server && npm start",
-    "start:client": "cd client && npm start",
+    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
     "dev": "npm run dev:server",
     "dev:server": "cd server && npm run dev",
     "build": "cd client && npm run build",
@@ -29,5 +29,8 @@
     "i18next": "^25.2.1",
     "react-i18next": "^15.5.3",
     "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
   }
 }
