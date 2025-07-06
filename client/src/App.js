@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Container, Box, TextField, Button, Typography, List, ListItem, Paper, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, Checkbox, FormControlLabel, Switch, ListItemText, Tooltip, CssBaseline } from '@mui/material';
+import { Container, Box, TextField, Button, Typography, List, ListItem, Paper, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, ListItemText, Tooltip, CssBaseline } from '@mui/material';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
