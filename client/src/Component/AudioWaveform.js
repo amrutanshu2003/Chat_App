@@ -70,4 +70,4 @@ function formatTime(sec) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default AudioMessage; 
+export default AudioMessage;

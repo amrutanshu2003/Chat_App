@@ -1,4 +1,4 @@
-import i18n from 'i18next';
+import language from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
 const resources = {
@@ -28,7 +28,7 @@ const resources = {
   }
 };
 
-i18n
+language
   .use(initReactI18next)
   .init({
     resources,
@@ -39,4 +39,4 @@ i18n
     }
   });
 
-export default i18n; 
+export default language;

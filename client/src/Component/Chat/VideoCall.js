@@ -40,4 +40,4 @@ const VideoCallModal = ({ open, onClose, localStream, remoteStream, onAccept, on
   );
 };
 
-export default VideoCallModal; 
+export default VideoCallModal;

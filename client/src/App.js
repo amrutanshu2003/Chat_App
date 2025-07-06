@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Container, Box, TextField, Button, Typography, List, ListItem, Paper, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, Checkbox, FormControlLabel, Switch, ListItemText, Tooltip, CssBaseline } from '@mui/material';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import VideoCallModal from './VideoCallModal';
+import VideoCallModal from './Component/Chat/VideoCall';
 import SendIcon from '@mui/icons-material/Send';
 import VideocamIcon from '@mui/icons-material/Videocam';
 import CallIcon from '@mui/icons-material/Call';
@@ -12,15 +13,15 @@ import GroupIcon from '@mui/icons-material/Group';
 import PersonIcon from '@mui/icons-material/Person';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import IconButton from '@mui/material/IconButton';
-import Sidebar from './Sidebar';
+import Sidebar from './Theme/Sidebar';
 import SearchIcon from '@mui/icons-material/Search';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import PushPinIcon from '@mui/icons-material/PushPin';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import UserProfileDialog from './UserProfileDialog';
-import NotificationSettingsDialog from './NotificationSettingsDialog';
+import UserProfileDialog from './Component/UserProfileDialog';
+import NotificationSettingsDialog from './Component/Notification/NotificationSettingsDialog';
 import Snackbar from '@mui/material/Snackbar';
 import MuiAlert, { AlertProps } from '@mui/material/Alert';
 import Divider from '@mui/material/Divider';
@@ -32,7 +33,7 @@ import Cropper from 'react-easy-crop';
 import Slider from '@mui/material/Slider';
 import AddIcCallIcon from '@mui/icons-material/AddIcCall';
 import MicIcon from '@mui/icons-material/Mic';
-import SocialXIcon from './SocialXIcon';
+import SocialXIcon from './Component/HomeLogo';
 import VideocamOutlinedIcon from '@mui/icons-material/VideocamOutlined';
 import CallOutlinedIcon from '@mui/icons-material/CallOutlined';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -53,7 +54,7 @@ import { renderAsync } from 'docx-preview';
 import DeleteIcon from '@mui/icons-material/Delete';
 import PauseIcon from '@mui/icons-material/Pause';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import AudioWaveform from './AudioWaveform'; // <-- Import the new component
+import AudioWaveform from './Component/AudioWaveform'; // <-- Import the new component
 import WbSunnyIcon from '@mui/icons-material/WbSunny';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LoginIcon from '@mui/icons-material/Login';
@@ -64,11 +65,11 @@ import PhoneIcon from '@mui/icons-material/Phone';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import EditIcon from '@mui/icons-material/Edit';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
-import LockScreen from './LockScreen';
+import LockScreen from './Theme/LockScreen';
 import AddIcon from '@mui/icons-material/Add';
 import LinkIcon from '@mui/icons-material/Link';
 import DialpadIcon from '@mui/icons-material/Dialpad';
-import NewCallPanel from './NewCallPanel';
+import NewCallPanel from './Component/Chat/NewCallPanel';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
@@ -78,6 +79,8 @@ const Alert = React.forwardRef(function Alert(props, ref) {
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
 
 const API_URL = 'http://localhost:5001/api';
+
+// ... rest of the App.js code remains unchanged, no changes to logic or JSX ...
 const SOCKET_URL = 'http://localhost:5001';
 
 const getFullUrl = (url) => {
@@ -165,6 +168,7 @@ function saveMediaToIndexedDB(file, fileName) {
 }
 
 function App() {
+  const { t } = useTranslation();
   // Register service worker for push notifications
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -291,7 +295,7 @@ function App() {
   // Effect: When search changes and is not empty, fetch available users matching the search
   useEffect(() => {
     if (search.trim()) {
-      axios.get(`${API_URL}/messages/users/available?q=${encodeURIComponent(search)}`, {
+      axios.get(`${t}/messages/users/available?q=${encodeURIComponent(search)}`, {
         headers: { Authorization: `Bearer ${token}` }
       }).then(res => {
         setSearchResults(res.data);
@@ -1938,7 +1942,7 @@ function App() {
       const formData = new FormData();
       formData.append('username', updatedUser.username);
       formData.append('email', updatedUser.email);
-      formData.append('about', updatedUser.about);
+            formData.append('about', updatedUser.about);
       if (avatarFile) {
         formData.append('avatar', avatarFile);
       } else if (updatedUser.avatar === '') {

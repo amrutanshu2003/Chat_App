@@ -41,7 +41,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import Select from '@mui/material/Select';
 import { useTranslation } from 'react-i18next';
-import i18n from './i18n';
+import language from './Language';
 import InputBase from '@mui/material/InputBase';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
@@ -52,7 +52,7 @@ import Skeleton from '@mui/material/Skeleton';
 import Fade from '@mui/material/Fade';
 import { styled } from '@mui/material/styles';
 import SeasonalThemeSelector from './SeasonalThemeSelector';
-import AdvancedPersonalization from './AdvancedPersonalization';
+import AdvancedPersonalization from './Personalization';
 import MoodThemeSelector from './MoodThemeSelector';
 import LinearProgress from '@mui/material/LinearProgress';
 import { useCallback } from 'react';
@@ -105,7 +105,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
   const fileInputRef = React.useRef(null);
   const [generalDialogOpen, setGeneralDialogOpen] = useState(false);
   const { t } = useTranslation();
-  const [selectedLanguage, setSelectedLanguage] = useState(i18n.language === 'hi' ? 'Hindi' : 'English');
+  const [selectedLanguage, setSelectedLanguage] = useState(language.language === 'hi' ? 'Hindi' : 'English');
   const [fontSize, setFontSize] = useState(16);
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
@@ -713,7 +713,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
             variant={selectedLanguage === 'English' ? 'contained' : 'outlined'}
             onClick={() => {
               setSelectedLanguage('English');
-              i18n.changeLanguage('en');
+              language.changeLanguage('en');
             }}
             sx={{
               mr: 1,
@@ -729,7 +729,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
             variant={selectedLanguage === 'Hindi' ? 'contained' : 'outlined'}
             onClick={() => {
               setSelectedLanguage('Hindi');
-              i18n.changeLanguage('hi');
+              language.changeLanguage('hi');
             }}
             sx={{
               color: selectedLanguage === 'Hindi' ? '#fff' : '#25d366',
