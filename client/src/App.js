@@ -90,7 +90,7 @@ const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || BACKEND_URL;
 
 const getFullUrl = (url) => {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
+  if (url.startsWith('http') || url.startsWith('data:') || url.startsWith('blob:')) return url;
   return `${BACKEND_URL}${url}`;
 };
 
