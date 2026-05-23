@@ -13,6 +13,14 @@
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.js" },
+    { "src": "/static/(.*)", "dest": "/client/static/$1" },
+    { "src": "/manifest.json", "dest": "/client/manifest.json" },
+    { "src": "/asset-manifest.json", "dest": "/client/asset-manifest.json" },
+    { "src": "/favicon.ico", "dest": "/client/favicon.ico" },
+    { "src": "/logo192.png", "dest": "/client/logo192.png" },
+    { "src": "/logo512.png", "dest": "/client/logo512.png" },
+    { "src": "/sw.js", "dest": "/client/sw.js" },
+    { "src": "/notification.mp3", "dest": "/client/notification.mp3" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/client/index.html" }
   ]
