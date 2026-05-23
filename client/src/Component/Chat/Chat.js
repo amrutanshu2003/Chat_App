@@ -9,9 +9,10 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 
 // Helper to get full URL for avatar
 const getFullUrl = (url) => {
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:5001${url}`;
+  return `${backendUrl}${url}`;
 };
 
 const UserProfileDialog = ({ open, onClose, user, onChat, onCall, getUserStatus, fetchLastSeenIfNeeded }) => {

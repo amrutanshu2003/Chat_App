@@ -3,7 +3,7 @@ import socketIoClient from 'socket.io-client';
 
 export const GeneralSocketContext = createContext();
 
-const WS = 'http://localhost:6001';
+const WS = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_BACKEND_URL || 'http://localhost:5001';
 const socket = socketIoClient(WS);
 
 export const GeneralSocketProvider = ({ children }) => {
@@ -56,3 +56,4 @@ export const GeneralSocketProvider = ({ children }) => {
     </GeneralSocketContext.Provider>
   );
 }
+

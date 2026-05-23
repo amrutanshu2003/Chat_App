@@ -78,15 +78,20 @@ const Alert = React.forwardRef(function Alert(props, ref) {
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.js`;
 
-const API_URL = 'http://localhost:5001/api';
+const LOCAL_BACKEND_URL = 'http://localhost:5001';
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || LOCAL_BACKEND_URL;
+const API_URL = process.env.REACT_APP_API_URL || `${BACKEND_URL}/api`;
+const REALTIME_ENABLED = process.env.REACT_APP_ENABLE_REALTIME
+  ? process.env.REACT_APP_ENABLE_REALTIME === 'true'
+  : !window.location.hostname.includes('vercel.app');
 
 // ... rest of the App.js code remains unchanged, no changes to logic or JSX ...
-const SOCKET_URL = 'http://localhost:5001';
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || BACKEND_URL;
 
 const getFullUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:5001${url}`;
+  return `${BACKEND_URL}${url}`;
 };
 
 // Create a single notification audio instance to prevent conflicts
@@ -702,6 +707,7 @@ function App() {
   // Initialize socket after login
   useEffect(() => {
     if (user && token) {
+      if (!REALTIME_ENABLED) return undefined;
       const s = io(SOCKET_URL);
       if (user?.id) s.emit('join', user.id);
       // Emit userOnline as soon as socket connects
@@ -765,6 +771,54 @@ function App() {
       };
     }
   }, [user, token]);
+
+  // Poll users list for Vercel/serverless mode (Socket.IO fallback)
+  useEffect(() => {
+    if (!token || REALTIME_ENABLED) return undefined;
+    const intervalId = setInterval(() => {
+      axios.get(`${API_URL}/messages/users/all`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => setUsers(res.data || []))
+        .catch(() => {});
+    }, 10000);
+    return () => clearInterval(intervalId);
+  }, [token]);
+
+  // Poll direct messages when a chat is open (Socket.IO fallback)
+  useEffect(() => {
+    if (!token || !selectedUser || REALTIME_ENABLED) return undefined;
+    const intervalId = setInterval(() => {
+      axios.get(`${API_URL}/messages/${selectedUser._id}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => {
+          setMessages(res.data || []);
+          if (res.data?.length > 0) {
+            const lastMessage = res.data[res.data.length - 1];
+            setLastMessages(prev => ({ ...prev, [selectedUser._id]: lastMessage }));
+          }
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(intervalId);
+  }, [token, selectedUser]);
+
+  // Poll group messages when a group chat is open (Socket.IO fallback)
+  useEffect(() => {
+    if (!token || !selectedGroup || REALTIME_ENABLED) return undefined;
+    const intervalId = setInterval(() => {
+      axios
+        .get(`${API_URL}/messages/${selectedGroup._id}?type=group`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((res) => {
+          setGroupMessages(res.data || []);
+          if (res.data?.length > 0) {
+            const lastMessage = res.data[res.data.length - 1];
+            setLastMessages((prev) => ({ ...prev, [selectedGroup._id]: lastMessage }));
+          }
+        })
+        .catch(() => {});
+    }, 3000);
+    return () => clearInterval(intervalId);
+  }, [token, selectedGroup]);
 
   // Function to show notification for new messages
   const showMessageNotification = async (msg) => {
@@ -2299,7 +2353,7 @@ function App() {
     setForgotError('');
     setForgotSuccess('');
     try {
-      const res = await fetch('http://localhost:5001/api/auth/forgot-password', {
+      const res = await fetch(`${API_URL}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail })
@@ -2329,7 +2383,7 @@ function App() {
       return;
     }
     try {
-      const res = await fetch('http://localhost:5001/api/auth/reset-password', {
+      const res = await fetch(`${API_URL}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: forgotToken, newPassword: forgotNewPassword })
@@ -2354,7 +2408,7 @@ function App() {
   const handleCancelAccountDeletion = async (fromLogin) => {
     try {
       const tokenToUse = fromLogin ? pendingLoginToken : localStorage.getItem('token');
-      const res = await fetch('http://localhost:5001/api/auth/cancel-delete-account', {
+      const res = await fetch(`${API_URL}/auth/cancel-delete-account`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${tokenToUse}` }
       });
@@ -2621,7 +2675,7 @@ function App() {
 
   useEffect(() => {
     if (nav === 'calls' && token) {
-      axios.get('http://localhost:5001/api/calls', {
+      axios.get(`${API_URL}/calls`, {
         headers: { Authorization: `Bearer ${token}` }
       }).then(res => setCallHistory(res.data));
     }
@@ -4461,14 +4515,14 @@ function App() {
                         }}>
                           {fileData ? (
                             fileData.type.startsWith('image/') ? (
-                              <img src={`http://localhost:5001${fileData.file}`} alt={fileData.name || 'Image'} style={{ maxWidth: 200, borderRadius: 8 }} />
+                              <img src={getFullUrl(fileData.file)} alt={fileData.name || 'Image'} style={{ maxWidth: 200, borderRadius: 8 }} />
                             ) : fileData.type.startsWith('audio/') ? (
-                              <audio controls src={`http://localhost:5001${fileData.file}`} style={{ width: 200 }} />
+                              <audio controls src={getFullUrl(fileData.file)} style={{ width: 200 }} />
                             ) : fileData.type.startsWith('video/') ? (
                               <div style={{ maxWidth: 300, borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
                                 <video 
                                   controls 
-                                  src={`http://localhost:5001${fileData.file}`} 
+                                  src={getFullUrl(fileData.file)} 
                                   style={{ 
                                     width: '100%', 
                                     maxHeight: 200,
@@ -4520,7 +4574,7 @@ function App() {
                                   }}>
                                     <div style={{ color: '#d32f2f', marginBottom: 8 }}>Video failed to load</div>
                                     <a 
-                                      href={`http://localhost:5001${fileData.file}`} 
+                                      href={getFullUrl(fileData.file)} 
                                       target="_blank" 
                                       rel="noopener noreferrer"
                                       style={{ color: '#1976d2', textDecoration: 'underline' }}
@@ -4554,7 +4608,7 @@ function App() {
                                   {fileData.name || 'Document'}
                                 </div>
                                 <a 
-                                  href={`http://localhost:5001${fileData.file}`} 
+                                  href={getFullUrl(fileData.file)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   style={{ 
@@ -4582,7 +4636,7 @@ function App() {
                                   {fileData.name || 'Text Document'}
                                 </div>
                                 <a 
-                                  href={`http://localhost:5001${fileData.file}`} 
+                                  href={getFullUrl(fileData.file)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   style={{ 
@@ -4610,7 +4664,7 @@ function App() {
                                   {fileData.name || 'Document'}
                                 </div>
                                 <a 
-                                  href={`http://localhost:5001${fileData.file}`} 
+                                  href={getFullUrl(fileData.file)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   style={{ 
@@ -4638,7 +4692,7 @@ function App() {
                                   {fileData.name || 'Spreadsheet'}
                                 </div>
                                 <a 
-                                  href={`http://localhost:5001${fileData.file}`} 
+                                  href={getFullUrl(fileData.file)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   style={{ 
@@ -4666,7 +4720,7 @@ function App() {
                                   {fileData.name || 'Presentation'}
                                 </div>
                                 <a 
-                                  href={`http://localhost:5001${fileData.file}`} 
+                                  href={getFullUrl(fileData.file)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   style={{ 
@@ -4694,7 +4748,7 @@ function App() {
                                   {fileData.name || 'Archive'}
                                 </div>
                                 <a 
-                                  href={`http://localhost:5001${fileData.file}`} 
+                                  href={getFullUrl(fileData.file)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   style={{ 
@@ -4722,7 +4776,7 @@ function App() {
                                   {fileData.name || 'File'}
                                 </div>
                                 <a 
-                                  href={`http://localhost:5001${fileData.file}`} 
+                                  href={getFullUrl(fileData.file)} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   style={{ 
@@ -5255,3 +5309,7 @@ function App() {
 }
 
 export default App;
+
+
+
+

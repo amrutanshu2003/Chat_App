@@ -7,9 +7,10 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 
 const getFullUrl = (url) => {
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5001';
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:5001${url}`;
+  return `${backendUrl}${url}`;
 };
 
 const EditProfileDialog = ({ open, onClose, user, onSave }) => {
@@ -20,8 +21,8 @@ const EditProfileDialog = ({ open, onClose, user, onSave }) => {
   const [usernameDisabled, setUsernameDisabled] = useState(false);
   const [usernameHelper, setUsernameHelper] = useState('');
 
-  const API_URL = 'http://localhost:5001/api';
-  const BACKEND_URL = 'http://localhost:5001';
+  const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5001';
+  const API_URL = process.env.REACT_APP_API_URL || `${BACKEND_URL}/api`;
 
   const fileInputRef = useRef();
   const pencilRef = useRef();

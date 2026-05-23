@@ -75,7 +75,7 @@ function TabPanel({ children, value, index, ...other }) {
 const getFullUrl = (url) => {
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:5001${url}`;
+  return `${BACKEND_URL}${url}`;
 };
 
 // Styled chat item for hover/scale effect
@@ -927,7 +927,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
               }
               try {
                 const token = localStorage.getItem('token');
-                const res = await fetch('http://localhost:5001/api/auth/change-password', {
+                const res = await fetch(`${API_URL}/auth/change-password`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
@@ -976,7 +976,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
               setDeleteError('');
               try {
                 const token = localStorage.getItem('token');
-                const res = await fetch('http://localhost:5001/api/auth/delete-account', {
+                const res = await fetch(`${API_URL}/auth/delete-account`, {
                   method: 'DELETE',
                   headers: { 'Authorization': `Bearer ${token}` }
                 });
@@ -1546,3 +1546,5 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
 };
 
 export default Sidebar;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5001';
+const API_URL = process.env.REACT_APP_API_URL || `${BACKEND_URL}/api`;

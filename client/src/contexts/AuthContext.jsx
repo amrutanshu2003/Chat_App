@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const registerInputs = { username: userName, email: email, password: password, profilePicture: profilePicture };
-      const res = await axios.post('http://localhost:6001/register', registerInputs);
+      const res = await axios.post('/auth/register', registerInputs);
       console.log("Register response:", res);
       localStorage.setItem('userToken', res.data.token);
       localStorage.setItem('userId', res.data.user._id);
@@ -44,7 +44,7 @@ export const AuthProvider = ({ children }) => {
     try {
 
       const loginInputs = { email: email, password: password };
-      const res = await axios.post('http://localhost:6001/login', loginInputs);
+      const res = await axios.post('/auth/login', loginInputs);
       console.log("Login response:", res);
       localStorage.setItem('userToken', res.data.token);
       localStorage.setItem('userId', res.data.user._id);
@@ -78,3 +78,4 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+

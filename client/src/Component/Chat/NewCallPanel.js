@@ -16,9 +16,10 @@ import "./NewCallPanel.css";
 const SOCIALX_GREEN = '#25d366';
 
 const getFullUrl = (url) => {
+  const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
   if (!url) return '';
   if (url.startsWith('http')) return url;
-  return `http://localhost:5001${url}`;
+  return `${backendUrl}${url}`;
 };
 
 export default function NewCallPanel({ open, onClose, contacts = [], frequentlyContacted = [] }) {

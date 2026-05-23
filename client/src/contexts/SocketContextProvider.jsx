@@ -20,7 +20,11 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (user) {
-      const newSocket = io(process.env.REACT_APP_SERVER_URL || 'http://localhost:5000', {
+      const newSocket = io(
+        process.env.REACT_APP_SOCKET_URL ||
+        process.env.REACT_APP_BACKEND_URL ||
+        'http://localhost:5001',
+        {
         auth: {
           token: localStorage.getItem('token')
         },
@@ -200,3 +204,4 @@ export const SocketProvider = ({ children }) => {
     </SocketContext.Provider>
   );
 };
+

@@ -33,8 +33,9 @@ const messagesRoutes = require('./routes/messages');
 const callsRoute = require('./routes/calls');
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
+const isVercel = process.env.VERCEL === '1';
+const server = isVercel ? null : http.createServer(app);
+const io = isVercel ? null : new Server(server, {
   cors: {
     origin: '*',
   },
@@ -126,48 +127,48 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.log('MongoDB connection error:', err));
 
 // --- SOCKET.IO REAL-TIME MESSAGING ---
-io.on('connection', (socket) => {
-  // User joins their own room for private messages
-  socket.on('join', (userId) => {
-    socket.join(userId);
-    console.log(`User ${userId} joined their room`);
-  });
+if (io) {
+  io.on('connection', (socket) => {
+    // User joins their own room for private messages
+    socket.on('join', (userId) => {
+      socket.join(userId);
+      console.log(`User ${userId} joined their room`);
+    });
 
-  // Listen for sendMessage from sender and relay to receiver
-  socket.on('sendMessage', (msg) => {
-    // msg.to can be an object or a string
-    let toId = msg.to;
-    if (msg.to && typeof msg.to === 'object' && msg.to._id) {
-      toId = msg.to._id;
-    }
-    if (toId) {
-      io.to(toId).emit('receiveMessage', msg);
-      console.log(`Relayed message from ${msg.from && msg.from._id ? msg.from._id : msg.sender} to ${toId}`);
-    }
-  });
+    // Listen for sendMessage from sender and relay to receiver
+    socket.on('sendMessage', (msg) => {
+      // msg.to can be an object or a string
+      let toId = msg.to;
+      if (msg.to && typeof msg.to === 'object' && msg.to._id) {
+        toId = msg.to._id;
+      }
+      if (toId) {
+        io.to(toId).emit('receiveMessage', msg);
+        console.log(`Relayed message from ${msg.from && msg.from._id ? msg.from._id : msg.sender} to ${toId}`);
+      }
+    });
 
-  // (Optional) Group message relay
-  socket.on('sendGroupMessage', (msg) => {
-    if (msg.groupId) {
-      io.to(msg.groupId).emit('receiveGroupMessage', msg);
-      console.log(`Relayed group message to group ${msg.groupId}`);
-    }
-  });
+    // (Optional) Group message relay
+    socket.on('sendGroupMessage', (msg) => {
+      if (msg.groupId) {
+        io.to(msg.groupId).emit('receiveGroupMessage', msg);
+        console.log(`Relayed group message to group ${msg.groupId}`);
+      }
+    });
 
-  // (Optional) User online status, typing, etc. can be added here
-
-  // Relay typing indicator
-  socket.on('typing', ({ sender, receiver }) => {
-    if (receiver) {
-      io.to(receiver).emit('typing', { sender });
-    }
+    // Relay typing indicator
+    socket.on('typing', ({ sender, receiver }) => {
+      if (receiver) {
+        io.to(receiver).emit('typing', { sender });
+      }
+    });
+    socket.on('stopTyping', ({ sender, receiver }) => {
+      if (receiver) {
+        io.to(receiver).emit('stopTyping', { sender });
+      }
+    });
   });
-  socket.on('stopTyping', ({ sender, receiver }) => {
-    if (receiver) {
-      io.to(receiver).emit('stopTyping', { sender });
-    }
-  });
-});
+}
 
 // Scheduled job to delete users whose deletionDate has passed
 setInterval(async () => {
@@ -192,4 +193,8 @@ setInterval(async () => {
 
 console.log('Messages routes loaded');
 
-server.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
+if (!isVercel) {
+  server.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
+}
+
+module.exports = app;
