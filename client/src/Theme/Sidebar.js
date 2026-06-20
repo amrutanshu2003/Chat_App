@@ -428,31 +428,39 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
   }, [storageDialogOpen]);
 
   return (
-    <Box position="relative" display="flex" flexDirection="column" alignItems={expanded ? 'flex-start' : 'center'}
+    <Box 
       bgcolor={darkMode ? '#000' : '#f5f5f5'}
-      height="100%"
-      width={expanded ? 180 : 56}
-      minWidth={expanded ? 180 : 56}
-      py={2}
-      boxShadow={darkMode ? 4 : 2}
       sx={{
-        transition: 'width 0.2s',
+        position: { xs: 'fixed', sm: 'relative' },
+        bottom: { xs: 0, sm: 'auto' },
+        left: { xs: 0, sm: 'auto' },
+        zIndex: { xs: 1000, sm: 'auto' },
+        display: 'flex',
+        flexDirection: { xs: 'row', sm: 'column' },
+        alignItems: { xs: 'center', sm: expanded ? 'flex-start' : 'center' },
+        justifyContent: { xs: 'space-around', sm: 'flex-start' },
+        height: { xs: 56, sm: '100%' },
+        width: { xs: '100vw', sm: expanded ? 180 : 56 },
+        minWidth: { xs: '100vw', sm: expanded ? 180 : 56 },
+        py: { xs: 0, sm: 2 },
+        px: { xs: 1, sm: 0 },
+        boxShadow: darkMode ? 4 : 2,
+        transition: 'width 0.2s, height 0.2s',
         overflow: 'hidden',
         borderRadius: 0,
-        borderTopLeftRadius: 0,
-        borderRight: darkMode ? '1.5px solid #222' : '1.5px solid #e0e0e0',
-        borderTop: 0,
+        borderTop: { xs: darkMode ? '1.5px solid #222' : '1.5px solid #e0e0e0', sm: 0 },
+        borderRight: { xs: 0, sm: darkMode ? '1.5px solid #222' : '1.5px solid #e0e0e0' },
         '::-webkit-scrollbar': { display: 'none' },
         scrollbarWidth: 'none',
         msOverflowStyle: 'none',
         background: darkMode ? '#000' : undefined
       }}
     >
-      <IconButton onClick={() => setExpanded(e => !e)} sx={{ mb: 2, alignSelf: expanded ? 'flex-start' : 'center', color: darkMode ? '#aebac1' : '#222' }}>
+      <IconButton onClick={() => setExpanded(e => !e)} sx={{ display: { xs: 'none', sm: 'inline-flex' }, mb: 2, alignSelf: expanded ? 'flex-start' : 'center', color: darkMode ? '#aebac1' : '#222' }}>
         <MenuIcon fontSize="small" />
       </IconButton>
       
-      <Box display="flex" flexDirection="column" alignItems={expanded ? 'flex-start' : 'center'} gap={0} mt={1} sx={{ width: '100%' }}>
+      <Box display="flex" flexDirection={{ xs: 'row', sm: 'column' }} alignItems="center" justifyContent={{ xs: 'space-around', sm: 'flex-start' }} gap={{ xs: 1, sm: 0 }} mt={{ xs: 0, sm: 1 }} sx={{ width: '100%', height: { xs: '100%', sm: 'auto' } }}>
         <Tooltip title="Chats" placement="right">
           <Box display="flex" alignItems="center" width={expanded ? '100%' : 'auto'}>
             <IconButton
@@ -521,11 +529,42 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
             {expanded && <Typography ml={1} sx={{ color: darkMode ? '#fff' : 'inherit', fontWeight: nav === 'status' ? 700 : 400 }}>Status</Typography>}
           </Box>
         </Tooltip>
-        <Divider sx={{ width: expanded ? '100%' : '80%', my: 1, borderColor: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)' }} />
+
+        {/* Settings Tab - Mobile Only */}
+        <Tooltip title="Settings" placement="top">
+          <Box display={{ xs: 'flex', sm: 'none' }} alignItems="center">
+            <IconButton onClick={e => { onNav('settings'); handleAvatarClick(e); }} sx={{ color: nav === 'settings' ? '#25d366' : (darkMode ? '#aebac1' : '#222'), background: nav === 'settings' ? (darkMode ? 'rgba(37,211,102,0.08)' : 'rgba(37,211,102,0.08)') : 'none', width: 40, height: 40, borderRadius: 2 }}>
+              <SettingsOutlinedIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Tooltip>
+
+        {/* Profile Tab - Mobile Only */}
+        <Tooltip title="Profile" placement="top">
+          <Box display={{ xs: 'flex', sm: 'none' }} alignItems="center">
+            <IconButton onClick={handleAvatarClick} sx={{ p: 0, borderRadius: '50%' }}>
+              <Avatar
+                src={
+                  user?.avatar
+                    ? user.avatar.startsWith('blob:')
+                      ? user.avatar
+                      : getFullUrl(user.avatar)
+                    : undefined
+                }
+                alt={user?.username}
+                sx={{ width: 32, height: 32 }}
+              >
+                {!user?.avatar && user?.username?.[0]}
+              </Avatar>
+            </IconButton>
+          </Box>
+        </Tooltip>
+
+        <Divider sx={{ display: { xs: 'none', sm: 'block' }, width: expanded ? '100%' : '80%', my: 1, borderColor: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)' }} />
       </Box>
-      <Box sx={{ flex: 1 }} />
+      <Box sx={{ display: { xs: 'none', sm: 'block' }, flex: 1 }} />
       {/* Bottom group: Favorite, Trash, Settings */}
-      <Box display="flex" flexDirection="column" alignItems={expanded ? 'flex-start' : 'center'} sx={{ width: '100%' }}>
+      <Box display={{ xs: 'none', sm: 'flex' }} flexDirection="column" alignItems={expanded ? 'flex-start' : 'center'} sx={{ width: '100%' }}>
         <Tooltip title="Favorite" placement="right">
           <Box display="flex" alignItems="center" width={expanded ? '100%' : 'auto'}>
             <IconButton onClick={() => onNav('favorite')} sx={{ color: nav === 'favorite' ? '#25d366' : (darkMode ? '#aebac1' : '#222'), background: nav === 'favorite' ? (darkMode ? 'rgba(37,211,102,0.08)' : 'rgba(37,211,102,0.08)') : 'none', width: 40, height: 40, borderRadius: 2, boxShadow: nav === 'favorite' ? 2 : 0 }}>
@@ -554,7 +593,7 @@ const Sidebar = ({ user, darkMode, setDarkMode, onNav, onLogout, onProfileEdit, 
         </Tooltip>
       </Box>
       {/* Avatar slightly above the bottom */}
-      <Box sx={{ p: -1, width: '100%', mb: -1 }}>
+      <Box sx={{ display: { xs: 'none', sm: 'block' }, p: -1, width: '100%', mb: -1 }}>
         <Tooltip title="Profile" placement="right">
           <Box display="flex" alignItems="center" sx={{ width: expanded ? '100%' : 'auto', justifyContent: expanded ? 'flex-start' : 'center', mt: 2 }}>
             <IconButton onClick={handleAvatarClick} sx={{ p: 0, borderRadius: '50%' }}>

@@ -3493,8 +3493,13 @@ function App() {
           </Typography>
         </Box>
       </Box>
-      <Box display="flex" width="100vw" bgcolor="background.default" sx={{ 
-        height: 'calc(100vh - 56px)', 
+      <Box bgcolor="background.default" sx={{ 
+        display: 'flex',
+        flexDirection: { xs: 'column-reverse', sm: 'row' },
+        height: {
+          xs: (selectedUser || selectedGroup) ? 'calc(100vh - 56px)' : 'calc(100vh - 112px)',
+          sm: 'calc(100vh - 56px)'
+        }, 
         width: '100vw', 
         minWidth: '100vw', 
         overflow: 'hidden', 
@@ -3506,24 +3511,26 @@ function App() {
         mt: 7, 
         transition: 'background-color 0.5s ease'
       }} style={{ scrollBehavior: 'auto' }}>
-        <Sidebar
-          user={user}
-          darkMode={darkMode}
-          setDarkMode={setDarkMode}
-          onNav={handleNav}
-          onLogout={handleLogout}
-          onProfileEdit={handleProfileEdit}
-          nav={nav}
-          unreadChatsCount={unreadChatsCount}
-          onNotificationSettings={() => setNotificationSettingsDialogOpen(true)}
-          fetchUserProfile={fetchUserProfile}
-          seasonalTheme={seasonalTheme}
-          setSeasonalTheme={setSeasonalThemeAndPersist}
-          getCurrentSeason={getCurrentSeason}
-        />
+        <Box display={{ xs: (selectedUser || selectedGroup) ? 'none' : 'block', sm: 'block' }}>
+          <Sidebar
+            user={user}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            onNav={handleNav}
+            onLogout={handleLogout}
+            onProfileEdit={handleProfileEdit}
+            nav={nav}
+            unreadChatsCount={unreadChatsCount}
+            onNotificationSettings={() => setNotificationSettingsDialogOpen(true)}
+            fetchUserProfile={fetchUserProfile}
+            seasonalTheme={seasonalTheme}
+            setSeasonalTheme={setSeasonalThemeAndPersist}
+            getCurrentSeason={getCurrentSeason}
+          />
+        </Box>
         {/* Chat List Panel */}
         {nav === 'status' ? (
-          <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
+          <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} flexDirection="column" height="100%" borderRadius={0} sx={{ display: { xs: (selectedUser || selectedGroup) ? 'none' : 'flex', sm: 'flex' }, mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
             <Typography variant="h5" fontWeight={900} sx={{ mt: 2, mb: 2, color: darkMode ? '#fff' : '#222', letterSpacing: 1 }}>Status</Typography>
             {/* My Status Card */}
             <Paper sx={{ display: 'flex', alignItems: 'center', p: 2, mb: 2, borderRadius: 3, bgcolor: darkMode ? '#000' : '#fff', '&:hover': { bgcolor: darkMode ? '#111' : '#f0f0f0' } }}>
@@ -3700,7 +3707,7 @@ function App() {
             </List>
           </Box>
         ) : nav === 'calls' ? (
-          <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
+          <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} flexDirection="column" height="100%" borderRadius={0} sx={{ display: { xs: (selectedUser || selectedGroup) ? 'none' : 'flex', sm: 'flex' }, mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative', '::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none', '-ms-overflow-style': 'none' }}>
             <Typography variant="h5" fontWeight={900} sx={{ position: 'absolute', top: 20, left: 24, color: darkMode ? '#fff' : '#222', letterSpacing: 1 }}>Calls</Typography>
             <IconButton 
               color="primary" 
@@ -3766,7 +3773,7 @@ function App() {
             )}
           </Box>
         ) : (
-          <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} display="flex" flexDirection="column" height="100%" borderRadius={0} sx={{ mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative' }}>
+          <Box width={{ xs: '100vw', sm: 320 }} minWidth={{ xs: '100vw', sm: 260 }} maxWidth={400} bgcolor={darkMode ? '#000' : '#fff'} p={{ xs: 1, sm: 2 }} boxShadow={0} flexDirection="column" height="100%" borderRadius={0} sx={{ display: { xs: (selectedUser || selectedGroup) ? 'none' : 'flex', sm: 'flex' }, mt: 0, overflowY: 'auto', borderRadius: 0, borderTopLeftRadius: 0, borderTop: 0, position: 'relative' }}>
             <Box display="flex" alignItems="center" mb={2} gap={1}>
               <Box flex={1} display="flex" alignItems="center" bgcolor={darkMode ? '#111' : '#f5f5f5'} px={1} sx={{ border: darkMode ? '1.5px solid #222e35' : '1.5px solid #e0e0e0', borderRadius: '50px' }}>
                 {/* Hidden dummy input to catch browser autofill */}
@@ -4167,9 +4174,9 @@ function App() {
             </Box>
           </Box>
         )}
-        <Box sx={{ width: '2px', height: 'calc(100vh - 0px)', backgroundColor: darkMode ? '#222' : '#e0e0e0', borderRadius: 0, mx: 0, my: 2 }} />
+        <Box sx={{ display: { xs: 'none', sm: 'block' }, width: '2px', height: 'calc(100vh - 0px)', backgroundColor: darkMode ? '#222' : '#e0e0e0', borderRadius: 0, mx: 0, my: 2 }} />
         {/* Chat Window */}
-        <Box flex={1} display="flex" flexDirection="column" p={0} borderRadius={0} boxShadow={0} bgcolor={darkMode ? '#000' : '#fff'} height="100%" minWidth={0} overflow="hidden" sx={{ 
+        <Box flex={1} display={{ xs: (selectedUser || selectedGroup) ? 'flex' : 'none', sm: 'flex' }} flexDirection="column" p={0} borderRadius={0} boxShadow={0} bgcolor={darkMode ? '#000' : '#fff'} height="100%" minWidth={0} overflow="hidden" sx={{ 
           width: 'auto', 
           maxWidth: '100vw', 
           overflow: 'hidden', 

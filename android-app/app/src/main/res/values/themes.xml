@@ -1,0 +1,15 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.SocialX" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">#25d366</item>
+        <item name="colorPrimaryVariant">#128c7e</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">#34b7f1</item>
+        <item name="colorSecondaryVariant">#075e54</item>
+        <item name="colorOnSecondary">@android:color/black</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">#25d366</item>
+    </style>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Social X</string>
+    <style name="Theme.SocialX" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        
+        <item name="colorPrimary">#25d366</item>
+        <item name="colorPrimaryVariant">#128c7e</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        
+        <item name="colorSecondary">#34b7f1</item>
+        <item name="colorSecondaryVariant">#075e54</item>
+        <item name="colorOnSecondary">@android:color/black</item>
+        
+        <item name="android:statusBarColor">#25d366</item>
+    </style>
+</resources>
