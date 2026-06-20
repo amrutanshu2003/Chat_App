@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Container, Box, TextField, Button, Typography, List, ListItem, Paper, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, ListItemText, Tooltip, CssBaseline } from '@mui/material';
+import { Container, Box, TextField, Button, Typography, List, ListItem, Paper, Avatar, Dialog, DialogTitle, DialogContent, DialogActions, ListItemText, Tooltip, CssBaseline, InputAdornment, CircularProgress } from '@mui/material';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
@@ -249,8 +249,15 @@ function App() {
   };
 
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [showLogin, setShowLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
+  const [otpDemoCode, setOtpDemoCode] = useState('');
+  const [authMethod, setAuthMethod] = useState('phone'); // 'phone' or 'email'
+  const [otpLoading, setOtpLoading] = useState(false);
   const [snackbar, setSnackbar] = useState(null);
   const [callOpen, setCallOpen] = useState(false);
   const [callIncoming, setCallIncoming] = useState(false);
@@ -1673,6 +1680,112 @@ function App() {
     }
   };
 
+  const handleSendOtp = async () => {
+    if (!phone || phone.trim().length < 8) {
+      setError('Please enter a valid phone number (at least 8 digits).');
+      return;
+    }
+    setOtpLoading(true);
+    setError('');
+    try {
+      const res = await axios.post(`${API_URL}/auth/otp/send`, { phone: phone.trim() });
+      if (res.data.success) {
+        setOtpSent(true);
+        if (res.data.demoOtp) {
+          setOtpDemoCode(res.data.demoOtp);
+        }
+        setSnackbar({ message: 'OTP code sent successfully (Demo Mode)', severity: 'success' });
+      } else {
+        setError(res.data.message || 'Failed to send OTP.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Error sending OTP. Please try again.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode || otpCode.trim().length < 4) {
+      setError('Please enter a valid OTP code.');
+      return;
+    }
+    setOtpLoading(true);
+    setError('');
+    try {
+      const res = await axios.post(`${API_URL}/auth/otp/verify`, {
+        phone: phone.trim(),
+        otp: otpCode.trim()
+      });
+      if (res.data.success) {
+        if (res.data.isNewUser) {
+          setIsNewUser(true);
+          setSnackbar({ message: 'Phone verified! Please set up your profile.', severity: 'success' });
+        } else {
+          setToken(res.data.token);
+          localStorage.setItem('token', res.data.token);
+          await fetchUserProfile(res.data.token);
+          await requestNotificationPermission();
+          setSnackbar({ message: 'Logged in successfully!', severity: 'success' });
+        }
+      } else {
+        setError(res.data.message || 'OTP verification failed.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Invalid or expired OTP code.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleOtpRegister = async () => {
+    if (!username || username.trim().length < 3) {
+      setError('Username must be at least 3 characters long.');
+      return;
+    }
+    setOtpLoading(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('username', username.trim());
+      formData.append('phone', phone.trim());
+      if (email) formData.append('email', email.trim());
+      if (avatarFile) {
+        formData.append('avatar', avatarFile);
+      }
+
+      const res = await axios.post(`${API_URL}/auth/otp/register`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      
+      if (res.data.success) {
+        setToken(res.data.token);
+        localStorage.setItem('token', res.data.token);
+        await fetchUserProfile(res.data.token);
+        await requestNotificationPermission();
+        // Clear forms
+        setPhone('');
+        setOtpCode('');
+        setOtpSent(false);
+        setIsNewUser(false);
+        setOtpDemoCode('');
+        setUsername('');
+        setEmail('');
+        setAvatar('');
+        setAvatarFile(null);
+        setSnackbar({ message: 'Registered and logged in successfully!', severity: 'success' });
+      } else {
+        setError(res.data.message || 'Registration failed.');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Registration failed. Please check your username and email.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
   const handleChoose2FA = () => {
     // 2FA functionality removed
   };
@@ -2718,7 +2831,7 @@ function App() {
         <Box width="100vw" position="fixed" top={0} left={0}
           sx={{
             height: 56,
-            display: 'flex',
+            display: { xs: 'none', sm: 'flex' }, // HIDE on mobile, show on tablet/desktop
             alignItems: 'center',
             boxShadow: darkMode ? 4 : 2,
             borderRadius: 0,
@@ -2774,101 +2887,693 @@ function App() {
           </Menu>
         </Box>
         {/* Main Content */}
-        <Box minHeight="100vh" width="100vw" bgcolor="background.default" sx={{ pt: 7, transition: 'background-color 0.5s ease' }}>
-          <Container maxWidth="md">
-            <Box mt={8} textAlign="center">
-              {/* Welcome Screen */}
-              <Box display="flex" alignItems="center" justifyContent="center" mb={4}>
-                <SocialXIcon size={80} color="#25d366" />
-                <Typography variant="h2" fontWeight={700} color="text.primary" sx={{ ml: 3, letterSpacing: 2 }}>
-                  Social X
-                </Typography>
+        <Box 
+          minHeight="100vh" 
+          width="100vw" 
+          bgcolor="background.default" 
+          sx={{ 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: { xs: 'flex-start', sm: 'center' },
+            alignItems: 'center',
+            pt: { xs: 2, sm: 8 }, 
+            pb: 4,
+            px: 2,
+            transition: 'background-color 0.5s ease',
+            background: darkMode 
+              ? 'linear-gradient(180deg, #121212 0%, #1e1e1e 100%)' 
+              : 'linear-gradient(180deg, #f9fbf9 0%, #f0f4f0 100%)'
+          }}
+        >
+          <Container maxWidth="xs" sx={{ mt: { xs: 4, sm: 0 }, px: { xs: 1, sm: 2 } }}>
+            {/* App branding */}
+            <Box display="flex" flexDirection="column" alignItems="center" mb={3} textAlign="center">
+              <Box 
+                sx={{ 
+                  bgcolor: 'rgba(37, 211, 102, 0.1)', 
+                  p: 2, 
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  mb: 1.5,
+                  boxShadow: '0 4px 20px rgba(37, 211, 102, 0.2)'
+                }}
+              >
+                <SocialXIcon size={64} color="#25d366" />
               </Box>
-              {/* Replace animated welcomeText with static text */}
-              <Typography variant="h4" color="text.primary" sx={{ mb: 3, fontWeight: 500, minHeight: '2.5rem' }}>
-                Welcome to Social X
+              <Typography variant="h4" fontWeight={800} color="text.primary" sx={{ letterSpacing: 1 }}>
+                Social X
               </Typography>
-              <Typography variant="h6" color="text.secondary" sx={{ mb: 6, maxWidth: 600, mx: 'auto' }}>
-                Connect with friends and family through instant messaging, voice messages, and file sharing. 
-                Experience real-time communication with modern features and beautiful design.
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontWeight: 500 }}>
+                Simple. Secure. Reliable.
               </Typography>
-              <Box display="flex" gap={3} justifyContent="center" flexWrap="wrap">
-                <Button 
-                  variant="contained" 
-                  size="large"
-                  onClick={() => setLoginDialogOpen(true)}
-                  sx={{ 
-                    bgcolor: '#25d366',
-                    '&:hover': { bgcolor: '#1ea952' },
-                    px: 4,
-                    py: 1.5,
-                    fontSize: 18,
-                    fontWeight: 600
-                  }}
-                >
-                  Get Started
-                </Button>
-                <Button 
-                  variant="outlined" 
-                  size="large"
-                  onClick={() => setAboutDialogOpen(true)}
-                  sx={{ 
-                    borderColor: '#25d366',
-                    color: '#25d366',
-                    '&:hover': { 
-                      borderColor: '#1ea952',
-                      bgcolor: 'rgba(37, 211, 102, 0.1)'
-                    },
-                    px: 4,
-                    py: 1.5,
-                    fontSize: 18,
-                    fontWeight: 600
-                  }}
-                >
-                  Learn More
-                </Button>
-                {/* Try Demo Button */}
-                <Button
-                  variant="outlined"
-                  size="large"
-                  startIcon={<span style={{fontSize:22,marginRight:2}}>🪄</span>}
-                  sx={{
-                    borderColor: '#25d366',
-                    color: '#25d366',
-                    fontWeight: 600,
-                    px: 4,
-                    py: 1.5,
-                    fontSize: 18,
-                    '&:hover': { borderColor: '#1ea952', color: '#1ea952', bgcolor: 'rgba(37,211,102,0.08)' },
-                  }}
-                  onClick={() => alert('Demo mode coming soon!')}
-                >
-                  Try Demo
-                </Button>
-              </Box>
-              {/* App Lock Badge */}
-              <Box display="flex" alignItems="center" justifyContent="center" mt={3} mb={1}>
-                <LockIcon sx={{ color: '#25d366', fontSize: 28, mr: 1 }} />
-                <Typography variant="subtitle1" fontWeight={600} color="#25d366">
-                  Privacy Protected: App Lock Enabled
-                </Typography>
-              </Box>
-              {/* Security Features List */}
-              <Box display="flex" justifyContent="center" gap={3} mb={2}>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <span style={{fontSize:22}}>🔒</span>
-                  <Typography variant="body2" color="textSecondary">End-to-End Encryption</Typography>
-                </Box>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <span style={{fontSize:22}}>🧬</span>
-                  <Typography variant="body2" color="textSecondary">Biometric/Passcode Lock</Typography>
-                </Box>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <span style={{fontSize:22}}>✅</span>
-                  <Typography variant="body2" color="textSecondary">2FA Security</Typography>
-                </Box>
-              </Box>
             </Box>
+
+            {/* Auth Card */}
+            <Paper 
+              elevation={darkMode ? 8 : 3}
+              sx={{ 
+                p: { xs: 3, sm: 4 }, 
+                borderRadius: 4,
+                bgcolor: 'background.paper',
+                boxShadow: darkMode 
+                  ? '0 8px 32px rgba(0, 0, 0, 0.4)' 
+                  : '0 8px 32px rgba(37, 211, 102, 0.08)',
+                border: `1px solid ${darkMode ? '#2c2c2c' : '#e2ebe2'}`,
+                width: '100%'
+              }}
+            >
+              {/* Top Selector - only show if not in OTP verification or profile setup */}
+              {!otpSent && !isNewUser && (
+                <Box 
+                  display="flex" 
+                  bgcolor={darkMode ? '#2c2c2c' : '#f0f4f0'} 
+                  p={0.5} 
+                  borderRadius={3} 
+                  mb={3}
+                >
+                  <Button
+                    fullWidth
+                    onClick={() => { setAuthMethod('phone'); setError(''); }}
+                    sx={{
+                      borderRadius: 2.5,
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      py: 1,
+                      color: authMethod === 'phone' ? '#fff' : 'text.secondary',
+                      bgcolor: authMethod === 'phone' ? '#25d366' : 'transparent',
+                      '&:hover': {
+                        bgcolor: authMethod === 'phone' ? '#1ea952' : 'transparent',
+                      }
+                    }}
+                  >
+                    Phone OTP
+                  </Button>
+                  <Button
+                    fullWidth
+                    onClick={() => { setAuthMethod('email'); setError(''); }}
+                    sx={{
+                      borderRadius: 2.5,
+                      textTransform: 'none',
+                      fontWeight: 600,
+                      py: 1,
+                      color: authMethod === 'email' ? '#fff' : 'text.secondary',
+                      bgcolor: authMethod === 'email' ? '#25d366' : 'transparent',
+                      '&:hover': {
+                        bgcolor: authMethod === 'email' ? '#1ea952' : 'transparent',
+                      }
+                    }}
+                  >
+                    Email
+                  </Button>
+                </Box>
+              )}
+
+              {/* AUTH METHOD: PHONE */}
+              {authMethod === 'phone' && (
+                <Box>
+                  {/* Step 1: Input Phone */}
+                  {!otpSent && !isNewUser && (
+                    <Box>
+                      <Typography variant="h6" fontWeight={700} gutterBottom>
+                        Verify your phone number
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        Social X will send a 6-digit OTP code to verify your phone number.
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        label="Phone Number"
+                        variant="outlined"
+                        placeholder="e.g. +919876543210"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <span style={{ fontSize: 18, marginRight: 4 }}>📞</span>
+                            </InputAdornment>
+                          ),
+                        }}
+                        sx={{
+                          mb: 3,
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        size="large"
+                        disabled={otpLoading}
+                        onClick={handleSendOtp}
+                        sx={{
+                          bgcolor: '#25d366',
+                          color: '#fff',
+                          fontWeight: 700,
+                          py: 1.5,
+                          borderRadius: 3,
+                          textTransform: 'none',
+                          fontSize: 16,
+                          '&:hover': { bgcolor: '#1ea952' }
+                        }}
+                      >
+                        {otpLoading ? <CircularProgress size={24} color="inherit" /> : 'Send OTP Code'}
+                      </Button>
+                    </Box>
+                  )}
+
+                  {/* Step 2: Verify OTP */}
+                  {otpSent && !isNewUser && (
+                    <Box>
+                      <Typography variant="h6" fontWeight={700} gutterBottom>
+                        Enter OTP Code
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        We sent a 6-digit verification code to <span style={{ fontWeight: 600, color: '#25d366' }}>{phone}</span>.
+                      </Typography>
+                      
+                      {/* Developer Sandbox Banner */}
+                      {otpDemoCode && (
+                        <Box 
+                          onClick={() => setOtpCode(otpDemoCode)}
+                          sx={{
+                            mb: 3,
+                            p: 2,
+                            borderRadius: 2.5,
+                            bgcolor: darkMode ? 'rgba(37, 211, 102, 0.15)' : 'rgba(37, 211, 102, 0.1)',
+                            border: `1px dashed #25d366`,
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            transition: 'all 0.2s',
+                            '&:hover': {
+                              transform: 'scale(1.02)',
+                              bgcolor: darkMode ? 'rgba(37, 211, 102, 0.2)' : 'rgba(37, 211, 102, 0.15)'
+                            }
+                          }}
+                        >
+                          <Typography variant="subtitle2" color="#25d366" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                            🔑 Developer Sandbox OTP
+                          </Typography>
+                          <Typography variant="h5" color="#25d366" fontWeight={800} letterSpacing={4} sx={{ my: 0.5 }}>
+                            {otpDemoCode}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Tap this banner to auto-fill the code
+                          </Typography>
+                        </Box>
+                      )}
+
+                      <TextField
+                        fullWidth
+                        label="6-Digit OTP"
+                        variant="outlined"
+                        placeholder="e.g. 123456"
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value)}
+                        inputProps={{ maxLength: 6, style: { textAlign: 'center', letterSpacing: 4, fontWeight: 700, fontSize: 20 } }}
+                        sx={{
+                          mb: 3,
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <Box display="flex" gap={2}>
+                        <Button
+                          fullWidth
+                          variant="outlined"
+                          size="large"
+                          disabled={otpLoading}
+                          onClick={() => { setOtpSent(false); setOtpCode(''); setError(''); }}
+                          sx={{
+                            borderColor: '#25d366',
+                            color: '#25d366',
+                            fontWeight: 700,
+                            py: 1.5,
+                            borderRadius: 3,
+                            textTransform: 'none',
+                            '&:hover': { borderColor: '#1ea952', bgcolor: 'rgba(37, 211, 102, 0.05)' }
+                          }}
+                        >
+                          Back
+                        </Button>
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          size="large"
+                          disabled={otpLoading}
+                          onClick={handleVerifyOtp}
+                          sx={{
+                            bgcolor: '#25d366',
+                            color: '#fff',
+                            fontWeight: 700,
+                            py: 1.5,
+                            borderRadius: 3,
+                            textTransform: 'none',
+                            '&:hover': { bgcolor: '#1ea952' }
+                          }}
+                        >
+                          {otpLoading ? <CircularProgress size={24} color="inherit" /> : 'Verify'}
+                        </Button>
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Step 3: Register New User Profile */}
+                  {isNewUser && (
+                    <Box>
+                      <Typography variant="h6" fontWeight={700} gutterBottom textAlign="center">
+                        Setup Your Profile
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }} textAlign="center">
+                        Set up your display name and optional email to complete your registration.
+                      </Typography>
+                      
+                      {/* Circular Avatar Selector */}
+                      <Box display="flex" flexDirection="column" alignItems="center" my={2}>
+                        <Button
+                          variant="outlined"
+                          component="label"
+                          onMouseEnter={() => setIsAvatarHovered(true)}
+                          onMouseLeave={() => setIsAvatarHovered(false)}
+                          sx={{
+                            borderRadius: '50%',
+                            minWidth: 80,
+                            minHeight: 80,
+                            width: 80,
+                            height: 80,
+                            p: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            position: 'relative',
+                            overflow: 'hidden',
+                            border: `2px solid ${darkMode ? '#25d366' : '#e0e0e0'}`,
+                            background: '#fff',
+                            '&:hover': {
+                              background: '#e0e0e0',
+                            },
+                          }}
+                        >
+                          {avatar ? (
+                            <Avatar src={avatar} sx={{ width: 80, height: 80 }} />
+                          ) : (
+                            <CameraAltIcon sx={{ fontSize: 28, color: '#555' }} />
+                          )}
+                          {isAvatarHovered && (
+                            <Box sx={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(0,0,0,0.4)' }}>
+                              <EditIcon sx={{ color: 'white', fontSize: 24 }} />
+                            </Box>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            onChange={e => {
+                              const file = e.target.files[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  setCropImageSrc(reader.result);
+                                  setCropDialogOpen(true);
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </Button>
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                          Add Profile Picture
+                        </Typography>
+                      </Box>
+
+                      <TextField
+                        fullWidth
+                        label="Username"
+                        placeholder="Choose a display name"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        sx={{
+                          mb: 2,
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <TextField
+                        fullWidth
+                        label="Email (Optional)"
+                        placeholder="yourname@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        sx={{
+                          mb: 3,
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        size="large"
+                        disabled={otpLoading}
+                        onClick={handleOtpRegister}
+                        sx={{
+                          bgcolor: '#25d366',
+                          color: '#fff',
+                          fontWeight: 700,
+                          py: 1.5,
+                          borderRadius: 3,
+                          textTransform: 'none',
+                          fontSize: 16,
+                          '&:hover': { bgcolor: '#1ea952' }
+                        }}
+                      >
+                        {otpLoading ? <CircularProgress size={24} color="inherit" /> : 'Complete Profile Setup'}
+                      </Button>
+                    </Box>
+                  )}
+                </Box>
+              )}
+
+              {/* AUTH METHOD: EMAIL */}
+              {authMethod === 'email' && (
+                <Box>
+                  {/* Email Login Form */}
+                  {showLogin ? (
+                    <Box>
+                      <Typography variant="h6" fontWeight={700} gutterBottom>
+                        Login with Email
+                      </Typography>
+                      <TextField
+                        fullWidth
+                        label="Email"
+                        variant="outlined"
+                        placeholder="email@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        sx={{
+                          mb: 2,
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <TextField
+                        fullWidth
+                        label="Password"
+                        type="password"
+                        variant="outlined"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        sx={{
+                          mb: 1.5,
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <Box sx={{ mb: 3, textAlign: 'right' }}>
+                        <Button
+                          variant="text"
+                          size="small"
+                          sx={{ color: '#25d366', textTransform: 'none', fontWeight: 600 }}
+                          onClick={() => { setForgotDialogOpen(true); setForgotStep(1); }}
+                        >
+                          Forgot password?
+                        </Button>
+                      </Box>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        size="large"
+                        onClick={async () => {
+                          setError('');
+                          const result = await handleLogin();
+                          if (result?.pendingDeletion) {
+                            // Handled by deletion dialog
+                          }
+                        }}
+                        sx={{
+                          bgcolor: '#25d366',
+                          color: '#fff',
+                          fontWeight: 700,
+                          py: 1.5,
+                          borderRadius: 3,
+                          textTransform: 'none',
+                          fontSize: 16,
+                          '&:hover': { bgcolor: '#1ea952' }
+                        }}
+                      >
+                        Login
+                      </Button>
+                      <Box mt={3} textAlign="center">
+                        <Typography variant="body2" color="text.secondary">
+                          Don't have an account?{' '}
+                          <Button
+                            variant="text"
+                            onClick={() => {
+                              setUsername('');
+                              setEmail('');
+                              setPassword('');
+                              setConfirmPassword('');
+                              setAvatar('');
+                              setAvatarFile(null);
+                              setError('');
+                              setShowLogin(false);
+                            }}
+                            sx={{ color: '#25d366', textTransform: 'none', fontWeight: 600 }}
+                          >
+                            Register here
+                          </Button>
+                        </Typography>
+                      </Box>
+                    </Box>
+                  ) : (
+                    /* Email Register Form */
+                    <Box>
+                      <Typography variant="h6" fontWeight={700} gutterBottom textAlign="center">
+                        Create Account
+                      </Typography>
+                      
+                      {/* Avatar Upload */}
+                      <Box display="flex" flexDirection="column" alignItems="center" my={2}>
+                        <Button
+                          variant="outlined"
+                          component="label"
+                          onMouseEnter={() => setIsAvatarHovered(true)}
+                          onMouseLeave={() => setIsAvatarHovered(false)}
+                          sx={{
+                            borderRadius: '50%',
+                            minWidth: 72,
+                            minHeight: 72,
+                            width: 72,
+                            height: 72,
+                            p: 0,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            position: 'relative',
+                            overflow: 'hidden',
+                            border: `2px solid ${darkMode ? '#25d366' : '#e0e0e0'}`,
+                            background: '#fff',
+                            '&:hover': {
+                              background: '#e0e0e0',
+                            },
+                          }}
+                        >
+                          {avatar ? (
+                            <Avatar src={avatar} sx={{ width: 72, height: 72 }} />
+                          ) : (
+                            <CameraAltIcon sx={{ fontSize: 24, color: '#555' }} />
+                          )}
+                          {isAvatarHovered && (
+                            <Box sx={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(0,0,0,0.4)' }}>
+                              <EditIcon sx={{ color: 'white', fontSize: 20 }} />
+                            </Box>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            onChange={e => {
+                              const file = e.target.files[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  setCropImageSrc(reader.result);
+                                  setCropDialogOpen(true);
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </Button>
+                      </Box>
+
+                      <TextField
+                        fullWidth
+                        label="Username"
+                        margin="dense"
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <TextField
+                        fullWidth
+                        label="Email"
+                        margin="dense"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <TextField
+                        fullWidth
+                        label="Password"
+                        type="password"
+                        margin="dense"
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <TextField
+                        fullWidth
+                        label="Confirm Password"
+                        type="password"
+                        margin="dense"
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                        sx={{
+                          mb: 3,
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            '&.Mui-focused fieldset': {
+                              borderColor: '#25d366',
+                            },
+                          },
+                          '& .MuiInputLabel-root.Mui-focused': {
+                            color: '#25d366',
+                          }
+                        }}
+                      />
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        size="large"
+                        onClick={async () => {
+                          setError('');
+                          await handleRegister();
+                        }}
+                        sx={{
+                          bgcolor: '#25d366',
+                          color: '#fff',
+                          fontWeight: 700,
+                          py: 1.5,
+                          borderRadius: 3,
+                          textTransform: 'none',
+                          fontSize: 16,
+                          '&:hover': { bgcolor: '#1ea952' }
+                        }}
+                      >
+                        Sign Up
+                      </Button>
+                      <Box mt={3} textAlign="center">
+                        <Typography variant="body2" color="text.secondary">
+                          Already have an account?{' '}
+                          <Button
+                            variant="text"
+                            onClick={() => {
+                              setUsername('');
+                              setEmail('');
+                              setPassword('');
+                              setConfirmPassword('');
+                              setAvatar('');
+                              setAvatarFile(null);
+                              setError('');
+                              setShowLogin(true);
+                            }}
+                            sx={{ color: '#25d366', textTransform: 'none', fontWeight: 600 }}
+                          >
+                            Login
+                          </Button>
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+              )}
+            </Paper>
           </Container>
         </Box>
         {error && (

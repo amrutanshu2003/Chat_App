@@ -524,6 +524,183 @@ router.delete('/delete-account', async (req, res) => {
   }
 });
 
+// In-memory store for OTPs
+const otps = {};
+
+// Send OTP
+router.post('/otp/send', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Phone number is required' });
+    }
+
+    // Generate random 6-digit OTP
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 5 * 60 * 1000; // 5 mins expiry
+
+    // Save in-memory
+    otps[phone] = { code, expires };
+
+    console.log(`\n====================================`);
+    console.log(`[OTP Sandbox] Code for ${phone} is ${code}`);
+    console.log(`====================================\n`);
+
+    res.json({
+      success: true,
+      message: 'OTP sent successfully (sandbox mode)',
+      demoOtp: code // For easy developer auto-fill and debugging
+    });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ success: false, message: 'Server error during OTP send' });
+  }
+});
+
+// Verify OTP
+router.post('/otp/verify', async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    if (!phone || !otp) {
+      return res.status(400).json({ success: false, message: 'Phone number and OTP code are required' });
+    }
+
+    const record = otps[phone];
+    if (!record) {
+      return res.status(400).json({ success: false, message: 'No OTP requested for this phone number' });
+    }
+
+    if (record.expires < Date.now()) {
+      delete otps[phone];
+      return res.status(400).json({ success: false, message: 'OTP has expired' });
+    }
+
+    if (record.code !== otp.toString().trim()) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP code' });
+    }
+
+    // Valid OTP - clean it up
+    delete otps[phone];
+
+    // Find if user exists with this phone number
+    const user = await User.findOne({ phone });
+
+    if (user) {
+      // User exists, log them in directly
+      if (user.deletionScheduled && user.deletionDate && new Date(user.deletionDate) <= new Date()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Account has been deleted or is no longer accessible.'
+        });
+      }
+
+      const token = jwt.sign(
+        { userId: user._id },
+        process.env.JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      return res.json({
+        success: true,
+        isNewUser: false,
+        message: 'Login successful',
+        token,
+        user: {
+          id: user._id,
+          username: user.username,
+          phone: user.phone,
+          email: user.email,
+          avatar: user.avatar,
+          about: user.about,
+          createdAt: user.createdAt,
+          deletionScheduled: user.deletionScheduled,
+          deletionDate: user.deletionDate,
+          passwordChangedAt: user.passwordChangedAt
+        }
+      });
+    } else {
+      // User is new - redirect to profile registration setup
+      return res.json({
+        success: true,
+        isNewUser: true,
+        message: 'Phone number verified. Please set up your profile.'
+      });
+    }
+  } catch (error) {
+    console.error('Verify OTP error:', error);
+    res.status(500).json({ success: false, message: 'Server error during OTP verification' });
+  }
+});
+
+// Register new user with verified phone
+router.post('/otp/register', upload.single('avatar'), async (req, res) => {
+  try {
+    const { username, phone, email, about } = req.body;
+
+    if (!username || !phone) {
+      return res.status(400).json({ success: false, message: 'Username and phone number are required' });
+    }
+
+    // Check if user already exists with this phone or username
+    const existingPhoneUser = await User.findOne({ phone });
+    if (existingPhoneUser) {
+      return res.status(400).json({ success: false, message: 'User with this phone number already exists' });
+    }
+
+    const existingUsernameUser = await User.findOne({ username });
+    if (existingUsernameUser) {
+      return res.status(400).json({ success: false, message: 'Username is already taken' });
+    }
+
+    if (email) {
+      const existingEmailUser = await User.findOne({ email });
+      if (existingEmailUser) {
+        return res.status(400).json({ success: false, message: 'Email is already in use' });
+      }
+    }
+
+    const userData = {
+      username,
+      phone,
+      email: email || undefined,
+      about: about || '',
+      passwordChangedAt: new Date()
+    };
+
+    if (req.file) {
+      userData.avatar = `/uploads/${req.file.filename}`;
+    }
+
+    const user = new User(userData);
+    await user.save();
+
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'User registered successfully',
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        phone: user.phone,
+        email: user.email,
+        avatar: user.avatar,
+        about: user.about,
+        createdAt: user.createdAt,
+        passwordChangedAt: user.passwordChangedAt
+      }
+    });
+  } catch (error) {
+    console.error('OTP Registration error:', error);
+    res.status(500).json({ success: false, message: 'Server error during phone registration' });
+  }
+});
+
 // Cancel scheduled account deletion
 router.post('/cancel-delete-account', async (req, res) => {
   try {

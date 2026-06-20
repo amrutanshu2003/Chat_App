@@ -61,96 +61,95 @@
 37-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:21:9-54
 38        android:supportsRtl="true"
 38-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:22:9-35
-39        android:testOnly="true"
-40        android:theme="@style/Theme.SocialX"
-40-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:23:9-45
-41        android:usesCleartextTraffic="true" >
-41-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:24:9-44
-42        <activity
-42-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:27:9-35:20
-43            android:name="com.socialx.chatapp.MainActivity"
-43-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:28:13-41
-44            android:configChanges="orientation|screenSize|keyboardHidden"
-44-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:30:13-74
-45            android:exported="true" >
-45-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:29:13-36
-46            <intent-filter>
-46-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:31:13-34:29
-47                <action android:name="android.intent.action.MAIN" />
-47-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:32:17-69
-47-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:32:25-66
-48
-49                <category android:name="android.intent.category.LAUNCHER" />
-49-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:33:17-77
-49-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:33:27-74
-50            </intent-filter>
-51        </activity>
-52
-53        <provider
-53-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:24:9-32:20
-54            android:name="androidx.startup.InitializationProvider"
-54-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:25:13-67
-55            android:authorities="com.socialx.chatapp.androidx-startup"
-55-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:26:13-68
-56            android:exported="false" >
-56-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:27:13-37
-57            <meta-data
-57-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:29:13-31:52
-58                android:name="androidx.emoji2.text.EmojiCompatInitializer"
-58-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:30:17-75
-59                android:value="androidx.startup" />
-59-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:31:17-49
-60            <meta-data
-60-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\amrut\.gradle\caches\transforms-3\6f56f1e43121291421b10fb7d5934740\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:29:13-31:52
-61                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
-61-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\amrut\.gradle\caches\transforms-3\6f56f1e43121291421b10fb7d5934740\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:30:17-78
-62                android:value="androidx.startup" />
-62-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\amrut\.gradle\caches\transforms-3\6f56f1e43121291421b10fb7d5934740\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:31:17-49
-63            <meta-data
-63-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:29:13-31:52
-64                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
-64-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:30:17-85
-65                android:value="androidx.startup" />
-65-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:31:17-49
-66        </provider>
-67
-68        <receiver
-68-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:34:9-52:20
-69            android:name="androidx.profileinstaller.ProfileInstallReceiver"
-69-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:35:13-76
-70            android:directBootAware="false"
-70-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:36:13-44
-71            android:enabled="true"
-71-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:37:13-35
-72            android:exported="true"
-72-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:38:13-36
-73            android:permission="android.permission.DUMP" >
-73-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:39:13-57
-74            <intent-filter>
-74-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:40:13-42:29
-75                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
-75-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:41:17-91
-75-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:41:25-88
-76            </intent-filter>
-77            <intent-filter>
-77-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:43:13-45:29
-78                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
-78-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:44:17-85
-78-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:44:25-82
-79            </intent-filter>
-80            <intent-filter>
-80-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:46:13-48:29
-81                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
-81-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:47:17-88
-81-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:47:25-85
-82            </intent-filter>
-83            <intent-filter>
-83-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:49:13-51:29
-84                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
-84-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:50:17-95
-84-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:50:25-92
-85            </intent-filter>
-86        </receiver>
-87    </application>
-88
-89</manifest>
+39        android:theme="@style/Theme.SocialX"
+39-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:23:9-45
+40        android:usesCleartextTraffic="true" >
+40-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:24:9-44
+41        <activity
+41-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:27:9-35:20
+42            android:name="com.socialx.chatapp.MainActivity"
+42-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:28:13-41
+43            android:configChanges="orientation|screenSize|keyboardHidden"
+43-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:30:13-74
+44            android:exported="true" >
+44-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:29:13-36
+45            <intent-filter>
+45-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:31:13-34:29
+46                <action android:name="android.intent.action.MAIN" />
+46-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:32:17-69
+46-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:32:25-66
+47
+48                <category android:name="android.intent.category.LAUNCHER" />
+48-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:33:17-77
+48-->C:\Users\amrut\Documents\GitHub\Chat_App\android-app\app\src\main\AndroidManifest.xml:33:27-74
+49            </intent-filter>
+50        </activity>
+51
+52        <provider
+52-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:24:9-32:20
+53            android:name="androidx.startup.InitializationProvider"
+53-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:25:13-67
+54            android:authorities="com.socialx.chatapp.androidx-startup"
+54-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:26:13-68
+55            android:exported="false" >
+55-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:27:13-37
+56            <meta-data
+56-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:29:13-31:52
+57                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+57-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:30:17-75
+58                android:value="androidx.startup" />
+58-->[androidx.emoji2:emoji2:1.2.0] C:\Users\amrut\.gradle\caches\transforms-3\ebd7e8b0739ea5852a86f1ec4bdee03d\transformed\emoji2-1.2.0\AndroidManifest.xml:31:17-49
+59            <meta-data
+59-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\amrut\.gradle\caches\transforms-3\6f56f1e43121291421b10fb7d5934740\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:29:13-31:52
+60                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+60-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\amrut\.gradle\caches\transforms-3\6f56f1e43121291421b10fb7d5934740\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:30:17-78
+61                android:value="androidx.startup" />
+61-->[androidx.lifecycle:lifecycle-process:2.6.1] C:\Users\amrut\.gradle\caches\transforms-3\6f56f1e43121291421b10fb7d5934740\transformed\lifecycle-process-2.6.1\AndroidManifest.xml:31:17-49
+62            <meta-data
+62-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:29:13-31:52
+63                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+63-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:30:17-85
+64                android:value="androidx.startup" />
+64-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:31:17-49
+65        </provider>
+66
+67        <receiver
+67-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:34:9-52:20
+68            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+68-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:35:13-76
+69            android:directBootAware="false"
+69-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:36:13-44
+70            android:enabled="true"
+70-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:37:13-35
+71            android:exported="true"
+71-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:38:13-36
+72            android:permission="android.permission.DUMP" >
+72-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:39:13-57
+73            <intent-filter>
+73-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:40:13-42:29
+74                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+74-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:41:17-91
+74-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:41:25-88
+75            </intent-filter>
+76            <intent-filter>
+76-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:43:13-45:29
+77                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+77-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:44:17-85
+77-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:44:25-82
+78            </intent-filter>
+79            <intent-filter>
+79-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:46:13-48:29
+80                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+80-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:47:17-88
+80-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:47:25-85
+81            </intent-filter>
+82            <intent-filter>
+82-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:49:13-51:29
+83                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+83-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:50:17-95
+83-->[androidx.profileinstaller:profileinstaller:1.3.0] C:\Users\amrut\.gradle\caches\transforms-3\19e15dbf13abf551346cc809eecbb624\transformed\profileinstaller-1.3.0\AndroidManifest.xml:50:25-92
+84            </intent-filter>
+85        </receiver>
+86    </application>
+87
+88</manifest>
