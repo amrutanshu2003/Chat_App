@@ -10,7 +10,10 @@
     "dev": "npm run dev:server",
     "dev:server": "cd server && npm run dev",
     "build": "cd client && npm run build",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install"
+    "install:server": "cd server && npm install --legacy-peer-deps",
+    "install:client": "cd client && npm install --legacy-peer-deps",
+    "postinstall": "npm run install:server && npm run install:client",
+    "install:all": "npm install --legacy-peer-deps && npm run postinstall"
   },
   "keywords": [
     "chat",
